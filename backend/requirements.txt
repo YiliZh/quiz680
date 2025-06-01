@@ -1,0 +1,19 @@
+fastapi==0.111.*
+uvicorn[standard]
+sqlalchemy>=2.0
+alembic
+pydantic>=2.7
+pydantic-settings
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+pdfplumber
+chromadb==0.4.22 --only-binary :all:
+langchain
+keybert
+tiktoken
+pytest
+black
+isort
+pre-commit
+python-slugify 
