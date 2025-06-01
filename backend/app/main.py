@@ -13,9 +13,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/auth", tags=["auth"])
-app.include_router(uploads.router, prefix="/uploads", tags=["uploads"])
-app.include_router(chapters.router, prefix="/chapters", tags=["chapters"])
-app.include_router(questions.router, prefix="/questions", tags=["questions"])
-app.include_router(history.router, prefix="/history", tags=["history"])
-app.include_router(ws.router, prefix="/ws", tags=["websocket"]) 
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(uploads.router, prefix="/api/uploads", tags=["uploads"])
+app.include_router(chapters.router, prefix="/api/chapters", tags=["chapters"])
+app.include_router(questions.router, prefix="/api/questions", tags=["questions"])
+app.include_router(history.router, prefix="/api/history", tags=["history"])
+app.include_router(ws.router, prefix="/api/ws", tags=["websocket"]) 
