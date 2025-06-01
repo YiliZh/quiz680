@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Box, Button, Typography, Paper, List, ListItem, ListItemText } from '@mui/material'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import axios from 'axios'
+import api from '../api/axios'
 
 function UploadPage() {
   const [file, setFile] = useState<File | null>(null)
@@ -9,7 +9,7 @@ function UploadPage() {
   const { data: uploads, refetch } = useQuery({
     queryKey: ['uploads'],
     queryFn: async () => {
-      const response = await axios.get('/api/uploads')
+      const response = await api.get('/uploads')
       return response.data
     }
   })
@@ -18,7 +18,7 @@ function UploadPage() {
     mutationFn: async (file: File) => {
       const formData = new FormData()
       formData.append('file', file)
-      const response = await axios.post('/api/uploads', formData, {
+      const response = await api.post('/uploads', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
