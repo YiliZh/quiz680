@@ -23,7 +23,7 @@ class UploadCreate(UploadBase):
 class Upload(UploadBase):
     id: int
     user_id: int
-    stored_path: str
+    file_path: str
     uploaded_at: datetime
     class Config:
         orm_mode = True

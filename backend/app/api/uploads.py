@@ -1,9 +1,10 @@
 import os
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Form
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import shutil
+import traceback
 
 from app.core.deps import get_db, get_current_user
 from app.core.config import settings
@@ -20,78 +21,91 @@ router = APIRouter()
 try:
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     logger.info(f"Upload directory created/verified at: {settings.UPLOAD_DIR}")
+    
+    # Check directory permissions
+    if not os.access(settings.UPLOAD_DIR, os.W_OK):
+        logger.error(f"No write permission for directory: {settings.UPLOAD_DIR}")
+        raise PermissionError(f"No write permission for directory: {settings.UPLOAD_DIR}")
+    logger.info(f"Upload directory permissions verified")
 except Exception as e:
-    logger.error(f"Failed to create upload directory: {str(e)}")
+    logger.error(f"Failed to setup upload directory: {str(e)}")
     raise
 
 @router.post("/", response_model=UploadSchema)
 async def create_upload(
     file: UploadFile = File(...),
-    title: str = None,
-    description: str = None,
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Upload a PDF file"""
+    print(f"\n=== Upload Request Started ===")
+    print(f"User ID: {current_user.id}")
+    print(f"File: {file.filename}")
+    
     logger.info(f"Upload request received from user {current_user.id} for file: {file.filename}")
     
-    if not file.filename.endswith('.pdf'):
+    if not file.filename.lower().endswith('.pdf'):
+        print("Error: Not a PDF file")
         logger.warning(f"Invalid file type attempted: {file.filename}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only PDF files are allowed"
         )
     
+    file_path = None
     try:
+        # Prepare file path
+        file_path = os.path.join(settings.UPLOAD_DIR, file.filename)
+        logger.info(f"Prepared file path: {file_path}")
+        
+        # Save the file first
+        print(f"\nSaving file to: {file_path}")
+        logger.info(f"Saving file to: {file_path}")
+        
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        print("File saved successfully")
+        logger.info(f"File saved successfully at: {file_path}")
+        
         # Create upload record
-        logger.info("Creating upload record in database")
+        print("\nCreating upload record...")
+        logger.info(f"Creating upload record in database for file: {file.filename}")
+        
         upload = Upload(
             filename=file.filename,
-            title=title or file.filename,
+            title= file.filename.replace('.pdf', ''),
             description=description,
             user_id=current_user.id,
-            status="processing"
+            status="pending",  # Changed from "processing" to "pending"
+            file_path=file_path
         )
+        
         db.add(upload)
         db.commit()
         db.refresh(upload)
-        logger.info(f"Upload record created with ID: {upload.id}")
         
-        # Save file and process
-        try:
-            file_path = os.path.join(settings.UPLOAD_DIR, file.filename)
-            logger.info(f"Saving file to: {file_path}")
-            
-            # Save the uploaded file
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-            logger.info(f"File saved successfully")
-            
-            # Process PDF in background
-            logger.info("Starting PDF processing")
-            await process_pdf(file_path, upload.id, db)
-            logger.info("PDF processing completed")
-            
-            return upload
-        except Exception as e:
-            logger.error(f"Error processing file: {str(e)}", exc_info=True)
-            upload.status = "failed"
-            db.commit()
-            # Clean up the file if it exists
-            if os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                    logger.info(f"Cleaned up file: {file_path}")
-                except Exception as cleanup_error:
-                    logger.error(f"Error cleaning up file: {str(cleanup_error)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error processing file: {str(e)}"
-            )
-    except HTTPException:
-        raise
+        print(f"Upload record created with ID: {upload.id}")
+        logger.info(f"Upload record created successfully with ID: {upload.id}")
+        
+        return upload
+        
     except Exception as e:
-        logger.error(f"Error in upload process: {str(e)}", exc_info=True)
+        print(f"\nError in upload process: {str(e)}")
+        logger.error(f"Error in upload process: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Clean up the file if it exists
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                print(f"Cleaned up file: {file_path}")
+                logger.info(f"Cleaned up file: {file_path}")
+            except Exception as cleanup_error:
+                print(f"Error cleaning up file: {str(cleanup_error)}")
+                logger.error(f"Error cleaning up file: {str(cleanup_error)}")
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error in upload process: {str(e)}"

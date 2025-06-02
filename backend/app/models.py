@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+import logging
 
 from app.core.db import Base
 
@@ -16,10 +17,37 @@ class Upload(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     filename = Column(String)
-    stored_path = Column(String)
+    file_path = Column(String)
+    title = Column(String)
+    description = Column(String, nullable=True)
+    status = Column(String, default="processing")
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     user = relationship("User", back_populates="uploads")
     chapters = relationship("Chapter", back_populates="upload")
+
+    def __init__(self, **kwargs):
+        logger = logging.getLogger(__name__)
+        logger.info("Initializing Upload object with kwargs: %s", kwargs)
+        
+        # Validate required fields
+        required_fields = ['filename', 'file_path', 'user_id']
+        for field in required_fields:
+            if field not in kwargs:
+                logger.error(f"Missing required field: {field}")
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Set default values
+        if 'status' not in kwargs:
+            kwargs['status'] = 'processing'
+        
+        # Log the values being set
+        logger.info("Setting Upload fields:")
+        for key, value in kwargs.items():
+            logger.info(f"  {key}: {value}")
+        
+        super().__init__(**kwargs)
+        logger.info("Upload object initialized successfully")
 
 class Chapter(Base):
     __tablename__ = "chapters"

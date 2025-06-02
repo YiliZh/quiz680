@@ -9,6 +9,9 @@ class Upload(Base, TimestampMixin):
     filename = Column(String, nullable=False)
     file_path = Column(String, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="pending")
 
     user = relationship("User", back_populates="uploads")
     chapters = relationship("Chapter", back_populates="upload", cascade="all, delete-orphan") 
