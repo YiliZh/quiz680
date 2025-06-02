@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from app.core.deps import get_db, get_current_user
 from app.core.config import settings
 from app.models import User, Upload, Chapter
-from app.schemas import Upload as UploadSchema, UploadCreate, Chapter
+from app.schemas import Upload as UploadSchema, UploadCreate, Chapter as ChapterSchema
 from app.services.pdf import process_pdf
 
 # Configure logging
@@ -34,7 +34,7 @@ except Exception as e:
 
 class UploadResponse(BaseModel):
     upload: UploadSchema
-    chapters: List[Chapter]
+    chapters: List[ChapterSchema]
 
 @router.post("/", response_model=UploadResponse)
 async def create_upload(
@@ -104,10 +104,17 @@ async def create_upload(
             db.commit()
             
             # Get the processed chapters
+            logger.info(f"Fetching chapters for upload {upload.id}")
             chapters = db.query(Chapter).filter(Chapter.upload_id == upload.id).all()
             logger.info(f"Found {len(chapters)} chapters for upload {upload.id}")
             
-            return UploadResponse(upload=upload, chapters=chapters)
+            # Log chapter details for debugging
+            for chapter in chapters:
+                logger.info(f"Chapter details - ID: {chapter.id}, Chapter No: {chapter.chapter_no}, Title: {chapter.title}")
+            
+            response = UploadResponse(upload=upload, chapters=chapters)
+            logger.info("Successfully created UploadResponse")
+            return response
             
         except Exception as process_error:
             logger.error(f"Error processing PDF: {str(process_error)}")
@@ -245,7 +252,7 @@ async def process_upload(
             detail=f"Error processing upload: {str(e)}"
         )
 
-@router.get("/{upload_id}/chapters", response_model=List[Chapter])
+@router.get("/{upload_id}/chapters", response_model=List[ChapterSchema])
 def get_upload_chapters(
     upload_id: int,
     db: Session = Depends(get_db),

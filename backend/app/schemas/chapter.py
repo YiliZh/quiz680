@@ -4,7 +4,9 @@ from typing import Optional, List
 class ChapterBase(BaseModel):
     chapter_no: int
     title: str
-    summary: str
+    content: str
+    summary: Optional[str] = None
+    keywords: Optional[str] = None
     upload_id: int
 
 class ChapterCreate(ChapterBase):

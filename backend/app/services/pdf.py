@@ -72,11 +72,13 @@ async def process_pdf(file_path: str, upload_id: int, db: Session):
                                     # Create chapter using SQLAlchemy ORM (now matches your model perfectly)
                                     chapter = Chapter(
                                         upload_id=upload_id,
+                                        chapter_no=chapter_number,
                                         title=f"Chapter {chapter_number}",
                                         content=chapter_text,
                                         summary=chapter_text[:500] if chapter_text else "No summary available",
                                         keywords=",".join(extract_keywords(chapter_text))
                                     )
+                                    logger.info(f"Created chapter object - Number: {chapter_number}, Title: {chapter.title}")
                                     chapters.append(chapter)
                                     chapter_number += 1
                                 current_chapter = []
@@ -97,11 +99,13 @@ async def process_pdf(file_path: str, upload_id: int, db: Session):
                         
                         chapter = Chapter(
                             upload_id=upload_id,
+                            chapter_no=chapter_number,
                             title=f"Chapter {chapter_number}",
                             content=chapter_text,
                             summary=chapter_text[:500] if chapter_text else "No summary available",
                             keywords=",".join(extract_keywords(chapter_text))
                         )
+                        logger.info(f"Created final chapter object - Number: {chapter_number}, Title: {chapter.title}")
                         chapters.append(chapter)
                 
                 if not chapters:
@@ -112,11 +116,13 @@ async def process_pdf(file_path: str, upload_id: int, db: Session):
                     if all_text_combined.strip():  # Only create chapter if there's content
                         chapter = Chapter(
                             upload_id=upload_id,
+                            chapter_no=1,
                             title="Document",
                             content=all_text_combined,
                             summary=all_text_combined[:500] if all_text_combined else "No summary available",
                             keywords=",".join(extract_keywords(all_text_combined))
                         )
+                        logger.info(f"Created single chapter object - Number: 1, Title: {chapter.title}")
                         chapters.append(chapter)
                     else:
                         raise ValueError("No text content could be extracted from the PDF")

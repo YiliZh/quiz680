@@ -6,6 +6,7 @@ class Chapter(Base, TimestampMixin):
     __tablename__ = "chapters"
 
     id = Column(Integer, primary_key=True, index=True)
+    chapter_no = Column(Integer, nullable=False)
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     summary = Column(Text)
