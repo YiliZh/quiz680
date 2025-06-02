@@ -1,31 +1,15 @@
-from .question import QuestionBase, QuestionCreate, QuestionResponse, AnswerSubmit
-from .user import UserBase, UserCreate, User, Token, TokenData
-from .upload import UploadBase, UploadCreate, Upload
-from .chapter import ChapterBase, ChapterCreate, Chapter
-from .history import AttemptBase, AttemptCreate, Attempt
+from .user import User, UserCreate, UserBase
+from .upload import Upload, UploadCreate, UploadBase
+from .chapter import Chapter, ChapterCreate, ChapterBase
+from .question import QuestionResponse, QuestionCreate, QuestionBase
+from .history import QuizAttempt, QuizAttemptCreate, QuizAttemptBase
+from .auth import Token, TokenData
 
 __all__ = [
-    # Question schemas
-    "QuestionBase",
-    "QuestionCreate",
-    "QuestionResponse",
-    "AnswerSubmit",
-    # User schemas
-    "UserBase",
-    "UserCreate",
-    "User",
-    "Token",
-    "TokenData",
-    # Upload schemas
-    "UploadBase",
-    "UploadCreate",
-    "Upload",
-    # Chapter schemas
-    "ChapterBase",
-    "ChapterCreate",
-    "Chapter",
-    # History schemas
-    "AttemptBase",
-    "AttemptCreate",
-    "Attempt"
+    'User', 'UserCreate', 'UserBase',
+    'Upload', 'UploadCreate', 'UploadBase',
+    'Chapter', 'ChapterCreate', 'ChapterBase',
+    'QuestionResponse', 'QuestionCreate', 'QuestionBase',
+    'QuizAttempt', 'QuizAttemptCreate', 'QuizAttemptBase',
+    'Token', 'TokenData'
 ] 

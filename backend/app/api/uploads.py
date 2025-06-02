@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import shutil
 import traceback
+from pydantic import BaseModel
 
 from app.core.deps import get_db, get_current_user
 from app.core.config import settings
-from app.models import User, Upload
-from app.schemas import Upload as UploadSchema, UploadCreate
+from app.models import User, Upload, Chapter
+from app.schemas import Upload as UploadSchema, UploadCreate, Chapter
 from app.services.pdf import process_pdf
 
 # Configure logging
@@ -31,7 +32,11 @@ except Exception as e:
     logger.error(f"Failed to setup upload directory: {str(e)}")
     raise
 
-@router.post("/", response_model=UploadSchema)
+class UploadResponse(BaseModel):
+    upload: UploadSchema
+    chapters: List[Chapter]
+
+@router.post("/", response_model=UploadResponse)
 async def create_upload(
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
@@ -39,7 +44,7 @@ async def create_upload(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Upload a PDF file"""
+    """Upload a PDF file and process it immediately"""
     print(f"\n=== Upload Request Started ===")
     print(f"User ID: {current_user.id}")
     print(f"File: {file.filename}")
@@ -75,10 +80,10 @@ async def create_upload(
         
         upload = Upload(
             filename=file.filename,
-            title= file.filename.replace('.pdf', ''),
+            title=file.filename.replace('.pdf', ''),
             description=description,
             user_id=current_user.id,
-            status="pending",  # Changed from "processing" to "pending"
+            status="processing",  # Start processing immediately
             file_path=file_path
         )
         
@@ -89,7 +94,30 @@ async def create_upload(
         print(f"Upload record created with ID: {upload.id}")
         logger.info(f"Upload record created successfully with ID: {upload.id}")
         
-        return upload
+        # Process the PDF immediately
+        try:
+            logger.info(f"Starting PDF processing for upload {upload.id}")
+            await process_pdf(file_path, upload.id, db)
+            
+            # Update status to completed
+            upload.status = "completed"
+            db.commit()
+            
+            # Get the processed chapters
+            chapters = db.query(Chapter).filter(Chapter.upload_id == upload.id).all()
+            logger.info(f"Found {len(chapters)} chapters for upload {upload.id}")
+            
+            return UploadResponse(upload=upload, chapters=chapters)
+            
+        except Exception as process_error:
+            logger.error(f"Error processing PDF: {str(process_error)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            upload.status = "failed"
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error processing PDF: {str(process_error)}"
+            )
         
     except Exception as e:
         print(f"\nError in upload process: {str(e)}")
@@ -157,4 +185,90 @@ def get_upload(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error fetching upload"
-        ) 
+        )
+
+@router.post("/{upload_id}/process", response_model=UploadSchema)
+async def process_upload(
+    upload_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Process a pending upload to extract chapters and generate questions"""
+    logger.info(f"Processing upload {upload_id} for user {current_user.id}")
+    
+    # Get the upload
+    upload = db.query(Upload).filter(
+        Upload.id == upload_id,
+        Upload.user_id == current_user.id
+    ).first()
+    
+    if not upload:
+        logger.warning(f"Upload {upload_id} not found for user {current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Upload not found"
+        )
+    
+    if upload.status != "pending":
+        logger.warning(f"Upload {upload_id} is not in pending state. Current status: {upload.status}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Upload is not in pending state. Current status: {upload.status}"
+        )
+    
+    try:
+        # Update status to processing
+        upload.status = "processing"
+        db.commit()
+        
+        # Process the PDF
+        logger.info(f"Starting PDF processing for upload {upload_id}")
+        await process_pdf(upload.file_path, upload.id, db)
+        
+        # Update status to completed
+        upload.status = "completed"
+        db.commit()
+        
+        logger.info(f"Successfully processed upload {upload_id}")
+        return upload
+        
+    except Exception as e:
+        logger.error(f"Error processing upload {upload_id}: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Update status to failed
+        upload.status = "failed"
+        db.commit()
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing upload: {str(e)}"
+        )
+
+@router.get("/{upload_id}/chapters", response_model=List[Chapter])
+def get_upload_chapters(
+    upload_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all chapters for a specific upload"""
+    logger.info(f"Fetching chapters for upload {upload_id}")
+    
+    # Get the upload
+    upload = db.query(Upload).filter(
+        Upload.id == upload_id,
+        Upload.user_id == current_user.id
+    ).first()
+    
+    if not upload:
+        logger.warning(f"Upload {upload_id} not found for user {current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Upload not found"
+        )
+    
+    # Get chapters
+    chapters = db.query(Chapter).filter(Chapter.upload_id == upload_id).all()
+    logger.info(f"Found {len(chapters)} chapters for upload {upload_id}")
+    
+    return chapters 

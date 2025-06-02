@@ -9,6 +9,13 @@ export const useUploads = () => {
 export const useUploadFile = () => {
   return useMutation({
     mutationFn: async (formData: FormData) => {
+      // Get the file name without extension for the title
+      const file = formData.get('file') as File;
+      const title = file.name.replace(/\.[^/.]+$/, ""); // Remove file extension
+      
+      // Add title to formData
+      formData.append('title', title);
+      
       const response = await api.post<Upload>('/api/uploads', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',

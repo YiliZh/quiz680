@@ -13,6 +13,8 @@ export default function UploadPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
 
+  console.log('UploadPage: Component rendered, user:', user?.id)
+
   const { data: uploads, isLoading: isLoadingUploads, error: uploadsError } = useQuery<Upload[], Error>({
     queryKey: ['uploads'],
     queryFn: useUploads,
@@ -22,6 +24,7 @@ export default function UploadPage() {
 
   useEffect(() => {
     if (uploadsError?.message.includes('401')) {
+      console.log('UploadPage: Unauthorized access, redirecting to auth')
       navigate('/auth')
     }
   }, [uploadsError, navigate])
@@ -31,9 +34,13 @@ export default function UploadPage() {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
-      console.log('File selected:', file.name, 'Size:', file.size)
+      console.log('UploadPage: File selected:', {
+        name: file.name,
+        size: file.size,
+        type: file.type
+      })
       if (file.type !== 'application/pdf') {
-        console.error('Invalid file type:', file.type)
+        console.error('UploadPage: Invalid file type:', file.type)
         setError('Please select a PDF file')
         return
       }
@@ -44,28 +51,39 @@ export default function UploadPage() {
 
   const handleUpload = async () => {
     if (!selectedFile) {
+      console.error('UploadPage: No file selected')
       setError('Please select a file first')
       return
     }
 
-    console.log('Starting file upload:', selectedFile.name)
+    console.log('UploadPage: Starting file upload:', {
+      fileName: selectedFile.name,
+      fileSize: selectedFile.size,
+      fileType: selectedFile.type
+    })
+
     const formData = new FormData()
     formData.append('file', selectedFile)
 
     try {
-      await uploadMutation.mutateAsync(formData)
-      console.log('File uploaded successfully')
+      console.log('UploadPage: Sending upload request')
+      const result = await uploadMutation.mutateAsync(formData)
+      console.log('UploadPage: Upload successful:', result)
       setSelectedFile(null)
       setError(null)
       queryClient.invalidateQueries({ queryKey: ['uploads'] })
     } catch (error: any) {
-      console.error('Upload failed:', error)
+      console.error('UploadPage: Upload failed:', {
+        error: error,
+        response: error.response?.data,
+        status: error.response?.status
+      })
       setError(error.response?.data?.detail || 'Error uploading file')
     }
   }
 
   if (!user) {
-    console.log('No user found, redirecting to login')
+    console.log('UploadPage: No user found, redirecting to login')
     navigate('/auth')
     return null
   }

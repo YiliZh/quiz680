@@ -2,11 +2,10 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 class ChapterBase(BaseModel):
+    chapter_no: int
     title: str
-    content: str
+    summary: str
     upload_id: int
-    page_number: int
-    keywords: Optional[List[str]] = None
 
 class ChapterCreate(ChapterBase):
     pass

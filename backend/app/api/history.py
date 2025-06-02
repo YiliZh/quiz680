@@ -4,7 +4,7 @@ from typing import List
 
 from app.core.deps import get_db, get_current_user
 from app.models import User, Attempt
-from app.schemas import Attempt as AttemptSchema
+from app.schemas import QuizAttempt as AttemptSchema
 
 router = APIRouter()
 

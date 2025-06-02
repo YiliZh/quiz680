@@ -2,9 +2,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 class QuestionBase(BaseModel):
-    text: str
+    q_text: str
     options: List[str]
     answer_key: int
+    explanation: str
     chapter_id: int
 
 class QuestionCreate(QuestionBase):

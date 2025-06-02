@@ -12,11 +12,4 @@ class User(UserBase):
     is_active: bool = True
 
     class Config:
-        from_attributes = True
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class TokenData(BaseModel):
-    user_id: int | None = None 
+        from_attributes = True 
