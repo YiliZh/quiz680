@@ -1,4 +1,5 @@
 import os
+import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
@@ -8,6 +9,10 @@ from app.core.config import settings
 from app.models import User, Upload
 from app.schemas import Upload as UploadSchema, UploadCreate
 from app.services.pdf import process_pdf
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -23,35 +28,50 @@ async def create_upload(
     current_user: User = Depends(get_current_user)
 ):
     """Upload a PDF file"""
+    logger.info(f"Upload request received from user {current_user.id} for file: {file.filename}")
+    
     if not file.filename.endswith('.pdf'):
+        logger.warning(f"Invalid file type attempted: {file.filename}")
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
-    # Create upload record
-    upload = Upload(
-        filename=file.filename,
-        title=title or file.filename,
-        description=description,
-        user_id=current_user.id,
-        status="processing"
-    )
-    db.add(upload)
-    db.commit()
-    db.refresh(upload)
-    
-    # Save file and process
     try:
-        file_path = os.path.join(settings.UPLOAD_DIR, file.filename)
-        with open(file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
-        
-        # Process PDF in background
-        await process_pdf(file_path, upload.id, db)
-        
-        return upload
-    except Exception as e:
-        upload.status = "failed"
+        # Create upload record
+        logger.info("Creating upload record in database")
+        upload = Upload(
+            filename=file.filename,
+            title=title or file.filename,
+            description=description,
+            user_id=current_user.id,
+            status="processing"
+        )
+        db.add(upload)
         db.commit()
+        db.refresh(upload)
+        logger.info(f"Upload record created with ID: {upload.id}")
+        
+        # Save file and process
+        try:
+            file_path = os.path.join(settings.UPLOAD_DIR, file.filename)
+            logger.info(f"Saving file to: {file_path}")
+            
+            with open(file_path, "wb") as buffer:
+                content = await file.read()
+                buffer.write(content)
+            logger.info(f"File saved successfully, size: {len(content)} bytes")
+            
+            # Process PDF in background
+            logger.info("Starting PDF processing")
+            await process_pdf(file_path, upload.id, db)
+            logger.info("PDF processing completed")
+            
+            return upload
+        except Exception as e:
+            logger.error(f"Error processing file: {str(e)}", exc_info=True)
+            upload.status = "failed"
+            db.commit()
+            raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error in upload process: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/", response_model=List[UploadSchema])
@@ -60,7 +80,14 @@ def get_uploads(
     current_user: User = Depends(get_current_user)
 ):
     """Get all uploads for current user"""
-    return db.query(Upload).filter(Upload.user_id == current_user.id).all()
+    logger.info(f"Fetching uploads for user {current_user.id}")
+    try:
+        uploads = db.query(Upload).filter(Upload.user_id == current_user.id).all()
+        logger.info(f"Found {len(uploads)} uploads for user {current_user.id}")
+        return uploads
+    except Exception as e:
+        logger.error(f"Error fetching uploads: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error fetching uploads")
 
 @router.get("/{upload_id}", response_model=UploadSchema)
 def get_upload(
@@ -69,10 +96,19 @@ def get_upload(
     current_user: User = Depends(get_current_user)
 ):
     """Get a specific upload"""
-    upload = db.query(Upload).filter(
-        Upload.id == upload_id,
-        Upload.user_id == current_user.id
-    ).first()
-    if not upload:
-        raise HTTPException(status_code=404, detail="Upload not found")
-    return upload 
+    logger.info(f"Fetching upload {upload_id} for user {current_user.id}")
+    try:
+        upload = db.query(Upload).filter(
+            Upload.id == upload_id,
+            Upload.user_id == current_user.id
+        ).first()
+        if not upload:
+            logger.warning(f"Upload {upload_id} not found for user {current_user.id}")
+            raise HTTPException(status_code=404, detail="Upload not found")
+        logger.info(f"Successfully retrieved upload {upload_id}")
+        return upload
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching upload {upload_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error fetching upload") 

@@ -8,7 +8,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.deps import get_db
+from app.core.deps import get_db, get_current_user
 from app.models import User
 from app.schemas import UserCreate, User as UserSchema, Token
 
@@ -85,4 +85,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         return {"access_token": access_token, "token_type": "bearer"}
     except Exception as e:
         logger.error(f"Error during login: {str(e)}")
-        raise 
+        raise
+
+@router.get("/me", response_model=UserSchema)
+def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user 

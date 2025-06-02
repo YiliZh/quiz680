@@ -5,7 +5,7 @@ export const useUploads = () => {
   return useQuery({
     queryKey: ['uploads'],
     queryFn: async () => {
-      const response = await api.get('/api/uploads')
+      const response = await api.get('/uploads')
       return response.data
     }
   })
