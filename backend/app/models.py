@@ -60,6 +60,25 @@ class Chapter(Base):
     tags = relationship("ChapterTag", back_populates="chapter")
     questions = relationship("Question", back_populates="chapter")
 
+    def __init__(self, **kwargs):
+        logger = logging.getLogger(__name__)
+        logger.info("Initializing Chapter object with kwargs: %s", kwargs)
+        
+        # Validate required fields
+        required_fields = ['upload_id', 'chapter_no', 'title', 'summary']
+        for field in required_fields:
+            if field not in kwargs:
+                logger.error(f"Missing required field: {field}")
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Log the values being set
+        logger.info("Setting Chapter fields:")
+        for key, value in kwargs.items():
+            logger.info(f"  {key}: {value}")
+        
+        super().__init__(**kwargs)
+        logger.info("Chapter object initialized successfully")
+
 class Tag(Base):
     __tablename__ = "tags"
     id = Column(Integer, primary_key=True, index=True)
