@@ -2,32 +2,49 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Box, Typography, Paper, TextField, Button, Alert } from '@mui/material'
 import { useMutation } from '@tanstack/react-query'
-import axios from 'axios'
+import api from '../api/axios'
 
 function AuthPage() {
   const navigate = useNavigate()
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [errorMessage, setErrorMessage] = useState<string>('')
 
   const authMutation = useMutation({
     mutationFn: async () => {
-      const response = await axios.post(`/api/auth/${isLogin ? 'login' : 'signup'}`, {
-        email,
-        password
-      })
-      return response.data
+      console.log('Attempting auth with:', { email, username, isLogin })
+      try {
+        const response = await api.post(`/auth/${isLogin ? 'login' : 'signup'}`, {
+          email,
+          username,
+          password
+        })
+        console.log('Auth response:', response.data)
+        return response.data
+      } catch (error: any) {
+        console.error('Auth error:', error.response?.data || error.message)
+        throw error
+      }
     },
     onSuccess: (data) => {
+      console.log('Auth successful:', data)
       if (isLogin) {
         localStorage.setItem('token', data.access_token)
       }
       navigate('/')
+    },
+    onError: (error: any) => {
+      console.error('Auth mutation error:', error)
+      setErrorMessage(error.response?.data?.detail || error.message || 'An error occurred')
     }
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setErrorMessage('')
+    console.log('Submitting form:', { email, username, isLogin })
     authMutation.mutate()
   }
 
@@ -47,6 +64,16 @@ function AuthPage() {
             margin="normal"
             required
           />
+          {!isLogin && (
+            <TextField
+              fullWidth
+              label="Username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              margin="normal"
+              required
+            />
+          )}
           <TextField
             fullWidth
             label="Password"
@@ -73,9 +100,9 @@ function AuthPage() {
         >
           {isLogin ? 'Need an account? Sign Up' : 'Already have an account? Login'}
         </Button>
-        {authMutation.isError && (
+        {errorMessage && (
           <Alert severity="error" sx={{ mt: 2 }}>
-            {authMutation.error instanceof Error ? authMutation.error.message : 'An error occurred'}
+            {errorMessage}
           </Alert>
         )}
       </Paper>
