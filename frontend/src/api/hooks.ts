@@ -1,29 +1,22 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import api from './axios'
+import { Upload } from '../types'
 
 export const useUploads = () => {
-  return useQuery({
-    queryKey: ['uploads'],
-    queryFn: async () => {
-      const response = await api.get('/uploads')
-      return response.data
-    }
-  })
+  return api.get<Upload[]>('/api/uploads').then(response => response.data);
 }
 
 export const useUploadFile = () => {
   return useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData()
-      formData.append('file', file)
-      const response = await api.post('/api/uploads', formData, {
+    mutationFn: async (formData: FormData) => {
+      const response = await api.post<Upload>('/api/uploads', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      })
-      return response.data
-    }
-  })
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    },
+  });
 }
 
 export const useQuestions = (chapterId: string) => {

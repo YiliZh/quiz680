@@ -23,18 +23,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryKey: ['user'],
     queryFn: async () => {
       try {
-        const response = await api.get('/auth/me')
+        const response = await api.get('/api/auth/me')
         return response.data
       } catch (error) {
+        console.error('Error fetching user data:', error)
         return null
       }
     },
-    enabled: !!localStorage.getItem('token')
+    enabled: !!localStorage.getItem('token'),
+    retry: false
   })
 
   useEffect(() => {
     if (userData) {
       setUser(userData)
+    } else {
+      setUser(null)
     }
   }, [userData])
 

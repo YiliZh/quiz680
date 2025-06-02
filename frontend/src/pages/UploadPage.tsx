@@ -1,159 +1,153 @@
-import { useState } from 'react'
-import { Box, Button, Typography, Paper, List, ListItem, ListItemText, Alert } from '@mui/material'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import React, { useState, useEffect } from 'react'
+import { Box, Button, Typography, Paper, List, ListItem, ListItemText, Alert, CircularProgress } from '@mui/material'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import api from '../api/axios'
 import { useAuth } from '../contexts/AuthContext'
+import { useUploads, useUploadFile } from '../api/hooks'
+import { Upload } from '../types'
 
-function UploadPage() {
+export default function UploadPage() {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [file, setFile] = useState<File | null>(null)
-  const [error, setError] = useState<string>('')
+  const queryClient = useQueryClient()
 
-  const { data: uploads, refetch, error: queryError } = useQuery({
+  const { data: uploads, isLoading: isLoadingUploads, error: uploadsError } = useQuery<Upload[], Error>({
     queryKey: ['uploads'],
-    queryFn: async () => {
-      console.log('Fetching uploads...')
-      try {
-        const response = await api.get('/uploads')
-        console.log('Uploads fetched successfully:', response.data)
-        return response.data
-      } catch (error: any) {
-        console.error('Error fetching uploads:', error.response?.data || error.message)
-        if (error.response?.status === 401 && !user) {
-          console.log('Unauthorized and no user, redirecting to auth page')
-          navigate('/auth')
-        }
-        throw error
-      }
-    },
-    enabled: !!user // Only fetch uploads if user is authenticated
+    queryFn: useUploads,
+    enabled: !!user,
+    retry: false
   })
 
-  const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      console.log('Starting file upload:', { filename: file.name, size: file.size, type: file.type })
-      const formData = new FormData()
-      formData.append('file', file)
-      
-      try {
-        console.log('Sending upload request to server...')
-        const response = await api.post('/uploads', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        })
-        console.log('Upload successful:', response.data)
-        return response.data
-      } catch (error: any) {
-        console.error('Upload error details:', {
-          status: error.response?.status,
-          data: error.response?.data,
-          message: error.message
-        })
-        throw error
-      }
-    },
-    onSuccess: (data) => {
-      console.log('Upload mutation succeeded:', data)
-      refetch()
-      setFile(null)
-      setError('')
-    },
-    onError: (error: any) => {
-      console.error('Upload mutation error:', error)
-      if (error.response?.status === 401 && !user) {
-        console.log('Unauthorized during upload and no user, redirecting to auth page')
-        navigate('/auth')
-      } else {
-        const errorMessage = error.response?.data?.detail || 'Failed to upload file'
-        console.error('Upload error message:', errorMessage)
-        setError(errorMessage)
-      }
+  useEffect(() => {
+    if (uploadsError?.message.includes('401')) {
+      navigate('/auth')
     }
-  })
+  }, [uploadsError, navigate])
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      const selectedFile = event.target.files[0]
-      console.log('File selected:', { 
-        name: selectedFile.name, 
-        size: selectedFile.size, 
-        type: selectedFile.type 
-      })
-      setFile(selectedFile)
-      setError('')
+  const uploadMutation = useUploadFile()
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      console.log('File selected:', file.name, 'Size:', file.size)
+      if (file.type !== 'application/pdf') {
+        console.error('Invalid file type:', file.type)
+        setError('Please select a PDF file')
+        return
+      }
+      setSelectedFile(file)
+      setError(null)
     }
   }
 
-  const handleUpload = () => {
-    if (file) {
-      console.log('Initiating file upload...')
-      uploadMutation.mutate(file)
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      setError('Please select a file first')
+      return
     }
+
+    console.log('Starting file upload:', selectedFile.name)
+    const formData = new FormData()
+    formData.append('file', selectedFile)
+
+    try {
+      await uploadMutation.mutateAsync(formData)
+      console.log('File uploaded successfully')
+      setSelectedFile(null)
+      setError(null)
+      queryClient.invalidateQueries({ queryKey: ['uploads'] })
+    } catch (error: any) {
+      console.error('Upload failed:', error)
+      setError(error.response?.data?.detail || 'Error uploading file')
+    }
+  }
+
+  if (!user) {
+    console.log('No user found, redirecting to login')
+    navigate('/auth')
+    return null
   }
 
   return (
-    <Box>
+    <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
         Upload PDF
       </Typography>
-      <Paper sx={{ p: 2, mb: 4 }}>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Box sx={{ mb: 3 }}>
         <input
-          type="file"
           accept=".pdf"
-          onChange={handleFileChange}
           style={{ display: 'none' }}
           id="file-input"
+          type="file"
+          onChange={handleFileSelect}
         />
         <label htmlFor="file-input">
-          <Button variant="contained" component="span">
-            Select File
+          <Button
+            variant="contained"
+            component="span"
+            disabled={uploadMutation.isPending}
+          >
+            Select PDF
           </Button>
         </label>
-        {file && (
-          <Box sx={{ mt: 2 }}>
-            <Typography>Selected: {file.name}</Typography>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleUpload}
-              disabled={uploadMutation.isPending}
-              sx={{ mt: 1 }}
-            >
-              {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
-            </Button>
-          </Box>
+        {selectedFile && (
+          <Typography sx={{ mt: 1 }}>
+            Selected file: {selectedFile.name}
+          </Typography>
         )}
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
-        )}
-      </Paper>
+      </Box>
 
-      <Typography variant="h5" gutterBottom>
-        Upload History
+      <Button
+        variant="contained"
+        color="primary"
+        onClick={handleUpload}
+        disabled={!selectedFile || uploadMutation.isPending}
+        sx={{ mr: 2 }}
+      >
+        {uploadMutation.isPending ? (
+          <>
+            <CircularProgress size={24} sx={{ mr: 1 }} />
+            Uploading...
+          </>
+        ) : (
+          'Upload'
+        )}
+      </Button>
+
+      <Typography variant="h5" sx={{ mt: 4, mb: 2 }}>
+        Your Uploads
       </Typography>
-      {queryError ? (
+
+      {isLoadingUploads ? (
+        <CircularProgress />
+      ) : uploadsError ? (
         <Alert severity="error">
-          Failed to load upload history. Please try again.
+          Error loading uploads: {uploadsError.message}
         </Alert>
-      ) : (
-        <List>
-          {uploads?.map((upload: any) => (
-            <ListItem key={upload.id}>
-              <ListItemText
-                primary={upload.filename}
-                secondary={new Date(upload.uploaded_at).toLocaleString()}
-              />
-            </ListItem>
+      ) : uploads && Array.isArray(uploads) && uploads.length > 0 ? (
+        <Box>
+          {uploads.map((upload: Upload) => (
+            <Box key={upload.id} sx={{ mb: 2, p: 2, border: '1px solid #ddd' }}>
+              <Typography variant="h6">{upload.title}</Typography>
+              <Typography>Status: {upload.status}</Typography>
+              {upload.description && (
+                <Typography>Description: {upload.description}</Typography>
+              )}
+            </Box>
           ))}
-        </List>
+        </Box>
+      ) : (
+        <Typography>No uploads yet</Typography>
       )}
     </Box>
   )
-}
-
-export default UploadPage 
+} 

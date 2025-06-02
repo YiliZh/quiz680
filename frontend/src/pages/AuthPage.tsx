@@ -32,7 +32,7 @@ function AuthPage() {
           const formData = new FormData()
           formData.append('username', email) // Use email as username for login
           formData.append('password', password)
-          const response = await api.post('/auth/login', formData, {
+          const response = await api.post('/api/auth/login', formData, {
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded'
             }
@@ -40,7 +40,7 @@ function AuthPage() {
           return response.data
         } else {
           // For signup, use JSON
-          const response = await api.post('/auth/signup', {
+          const response = await api.post('/api/auth/signup', {
             email,
             username,
             password
@@ -63,7 +63,7 @@ function AuthPage() {
         localStorage.setItem('token', data.access_token)
         // Fetch user data after successful login
         try {
-          const userResponse = await api.get('/auth/me')
+          const userResponse = await api.get('/api/auth/me')
           queryClient.setQueryData(['user'], userResponse.data)
         } catch (error) {
           console.error('Failed to fetch user data:', error)
