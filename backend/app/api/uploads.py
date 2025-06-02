@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Form, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import shutil
@@ -278,4 +278,39 @@ def get_upload_chapters(
     chapters = db.query(Chapter).filter(Chapter.upload_id == upload_id).all()
     logger.info(f"Found {len(chapters)} chapters for upload {upload_id}")
     
+    return chapters
+
+@router.get("/{upload_id}/chapters/summary", response_model=List[ChapterSchema])
+def get_chapter_summaries(
+    upload_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get chapter summaries for a specific upload with pagination"""
+    logger.info(f"Fetching chapter summaries for upload {upload_id} with pagination: skip={skip}, limit={limit}")
+    
+    # Get the upload
+    upload = db.query(Upload).filter(
+        Upload.id == upload_id,
+        Upload.user_id == current_user.id
+    ).first()
+    
+    if not upload:
+        logger.warning(f"Upload {upload_id} not found for user {current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Upload not found"
+        )
+    
+    # Get chapters with pagination
+    chapters = db.query(Chapter)\
+        .filter(Chapter.upload_id == upload_id)\
+        .order_by(Chapter.chapter_no)\
+        .offset(skip)\
+        .limit(limit)\
+        .all()
+    
+    logger.info(f"Found {len(chapters)} chapters for upload {upload_id}")
     return chapters 
