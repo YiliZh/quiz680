@@ -1,16 +1,17 @@
 from pydantic import BaseModel, EmailStr
+from typing import Optional
 from datetime import datetime
 
-class UserBase(BaseModel):
-    email: EmailStr
+class UserBaseSchema(BaseModel):
+    email: str
     username: str
 
-class UserCreate(UserBase):
+class UserCreateSchema(UserBaseSchema):
     password: str
 
-class User(UserBase):
+class UserSchema(UserBaseSchema):
     id: int
-    is_active: bool = True
+    is_active: bool
     created_at: datetime
     updated_at: datetime
 

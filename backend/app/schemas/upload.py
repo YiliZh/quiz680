@@ -1,20 +1,22 @@
 from pydantic import BaseModel
-from datetime import datetime
 from typing import Optional
+from datetime import datetime
 
-class UploadBase(BaseModel):
+class UploadBaseSchema(BaseModel):
     filename: str
-    title: str
+    title: Optional[str] = None
     description: Optional[str] = None
 
-class UploadCreate(UploadBase):
+class UploadCreateSchema(UploadBaseSchema):
     pass
 
-class Upload(UploadBase):
+class UploadSchema(UploadBaseSchema):
     id: int
     user_id: int
-    created_at: datetime
     status: str
+    file_path: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True 

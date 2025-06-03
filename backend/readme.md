@@ -3,6 +3,9 @@
    cd backend
    pip install -r requirements.txt
    uvicorn app.main:app --reload
+
+   python -m uvicorn app.main:app --reload --log-level debug
+
 ```
 
 ## Run PostgreSQL:

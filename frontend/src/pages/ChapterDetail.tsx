@@ -9,10 +9,12 @@ import {
   IconButton,
   CircularProgress,
   Button,
+  Alert,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
   PictureAsPdf as PdfIcon,
+  Quiz as QuizIcon,
 } from '@mui/icons-material';
 import { api } from '../services/api';
 
@@ -32,19 +34,42 @@ const ChapterDetail: React.FC = () => {
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [generatingQuestions, setGeneratingQuestions] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('ChapterDetail mounted with chapterId:', chapterId);
     fetchChapter();
   }, [chapterId]);
 
   const fetchChapter = async () => {
+    if (!chapterId) {
+      console.error('No chapterId provided');
+      setError('Invalid chapter ID');
+      setLoading(false);
+      return;
+    }
+
+    console.log('Fetching chapter details for ID:', chapterId);
     try {
       setLoading(true);
+      setError(null);
+      
+      console.log('Making API request to:', `/chapters/${chapterId}`);
       const response = await api.get(`/chapters/${chapterId}`);
+      console.log('API response received:', response.data);
+      
       setChapter(response.data);
-    } catch (err) {
-      setError('Failed to fetch chapter details');
-      console.error('Error fetching chapter:', err);
+    } catch (err: any) {
+      console.error('Error fetching chapter:', {
+        error: err,
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        config: err.config
+      });
+      
+      setError(err.response?.data?.detail || 'Failed to fetch chapter details');
     } finally {
       setLoading(false);
     }
@@ -57,6 +82,26 @@ const ChapterDetail: React.FC = () => {
   const handlePdfView = () => {
     if (chapter) {
       window.open(`/pdf-viewer/${chapter.upload_id}?chapter=${chapter.chapter_no}`, '_blank');
+    }
+  };
+
+  const handleGenerateQuestions = async () => {
+    if (!chapter) return;
+    
+    try {
+      setGeneratingQuestions(true);
+      setGenerationError(null);
+      
+      // Generate questions
+      await api.post(`/chapters/${chapterId}/generate-questions?num_questions=5`);
+      
+      // Navigate to quiz page
+      navigate(`/quiz/${chapterId}`);
+    } catch (err: any) {
+      setGenerationError(err.response?.data?.detail || 'Failed to generate questions');
+      console.error('Error generating questions:', err);
+    } finally {
+      setGeneratingQuestions(false);
     }
   };
 
@@ -108,14 +153,32 @@ const ChapterDetail: React.FC = () => {
           ))}
         </Box>
 
-        <Button
-          variant="contained"
-          color="secondary"
-          startIcon={<PdfIcon />}
-          onClick={handlePdfView}
-        >
-          View in PDF
-        </Button>
+        <Box display="flex" gap={2}>
+          <Button
+            variant="contained"
+            color="secondary"
+            startIcon={<PdfIcon />}
+            onClick={handlePdfView}
+          >
+            View in PDF
+          </Button>
+
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<QuizIcon />}
+            onClick={handleGenerateQuestions}
+            disabled={generatingQuestions}
+          >
+            {generatingQuestions ? 'Generating Questions...' : 'Take Quiz'}
+          </Button>
+        </Box>
+
+        {generationError && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {generationError}
+          </Alert>
+        )}
       </Paper>
 
       <Paper elevation={3} sx={{ p: 3 }}>

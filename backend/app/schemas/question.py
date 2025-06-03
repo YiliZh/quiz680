@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 
-class QuestionBase(BaseModel):
+class QuestionBaseSchema(BaseModel):
     question_text: str
     question_type: str  # multiple_choice, true_false, short_answer
     options: Optional[List[str]] = None
@@ -10,10 +10,10 @@ class QuestionBase(BaseModel):
     difficulty: str  # easy, medium, hard
     chapter_id: int
 
-class QuestionCreate(QuestionBase):
+class QuestionCreateSchema(QuestionBaseSchema):
     pass
 
-class QuestionResponse(QuestionBase):
+class QuestionResponseSchema(QuestionBaseSchema):
     id: int
     created_at: datetime
     updated_at: datetime
@@ -21,5 +21,6 @@ class QuestionResponse(QuestionBase):
     class Config:
         from_attributes = True
 
-class AnswerSubmit(BaseModel):
+class AnswerSubmitSchema(BaseModel):
+    question_id: int
     chosen_answer: str 

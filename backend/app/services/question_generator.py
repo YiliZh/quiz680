@@ -5,7 +5,7 @@ from sentence_transformers import SentenceTransformer
 import torch
 import re
 from app.models import Chapter, Question
-from app.schemas import QuestionCreate
+from app.schemas import QuestionCreateSchema
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class QuestionGenerator:
             logger.error(f"Error loading models: {str(e)}")
             raise
 
-    def generate_questions(self, chapter: Chapter, num_questions: int = 5) -> List[QuestionCreate]:
+    def generate_questions(self, chapter: Chapter, num_questions: int = 5) -> List[QuestionCreateSchema]:
         """
         Generate questions for a given chapter using multiple strategies.
         """
@@ -80,7 +80,7 @@ class QuestionGenerator:
         # This is a simplified version - in production, use more sophisticated methods
         return sentences[:10]
 
-    def _generate_mcqs(self, sentences: List[str], key_concepts: List[str], count: int) -> List[QuestionCreate]:
+    def _generate_mcqs(self, sentences: List[str], key_concepts: List[str], count: int) -> List[QuestionCreateSchema]:
         """Generate multiple choice questions."""
         logger.debug(f"Generating {count} MCQs")
         questions = []
@@ -102,7 +102,7 @@ class QuestionGenerator:
                 question_text = self.t5_tokenizer.decode(outputs[0], skip_special_tokens=True)
                 
                 # Create question object
-                question = QuestionCreate(
+                question = QuestionCreateSchema(
                     question_text=question_text,
                     question_type="multiple_choice",
                     options=["A", "B", "C", "D"],  # This should be generated
@@ -117,7 +117,7 @@ class QuestionGenerator:
                 
         return questions
 
-    def _generate_true_false(self, sentences: List[str], count: int) -> List[QuestionCreate]:
+    def _generate_true_false(self, sentences: List[str], count: int) -> List[QuestionCreateSchema]:
         """Generate true/false questions."""
         logger.debug(f"Generating {count} True/False questions")
         questions = []
@@ -139,7 +139,7 @@ class QuestionGenerator:
                 question_text = self.t5_tokenizer.decode(outputs[0], skip_special_tokens=True)
                 
                 # Create question object
-                question = QuestionCreate(
+                question = QuestionCreateSchema(
                     question_text=question_text,
                     question_type="true_false",
                     options=["True", "False"],
@@ -154,7 +154,7 @@ class QuestionGenerator:
                 
         return questions
 
-    def _generate_short_answer(self, sentences: List[str], count: int) -> List[QuestionCreate]:
+    def _generate_short_answer(self, sentences: List[str], count: int) -> List[QuestionCreateSchema]:
         """Generate short answer questions."""
         logger.debug(f"Generating {count} Short Answer questions")
         questions = []
@@ -176,7 +176,7 @@ class QuestionGenerator:
                 question_text = self.t5_tokenizer.decode(outputs[0], skip_special_tokens=True)
                 
                 # Create question object
-                question = QuestionCreate(
+                question = QuestionCreateSchema(
                     question_text=question_text,
                     question_type="short_answer",
                     options=[],  # No options for short answer

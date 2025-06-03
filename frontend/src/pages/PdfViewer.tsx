@@ -22,7 +22,7 @@ import {
 import { api } from '../services/api';
 
 // Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 interface Chapter {
   chapter_no: number;
@@ -58,6 +58,12 @@ const PdfViewer: React.FC = () => {
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
+    setLoading(false);
+  };
+
+  const onDocumentLoadError = (error: Error) => {
+    console.error('Error loading PDF:', error);
+    setError('Failed to load PDF');
     setLoading(false);
   };
 
@@ -158,7 +164,12 @@ const PdfViewer: React.FC = () => {
           <Document
             file={`/api/uploads/${uploadId}/pdf`}
             onLoadSuccess={onDocumentLoadSuccess}
+            onLoadError={onDocumentLoadError}
             loading={null}
+            options={{
+              cMapUrl: 'https://unpkg.com/pdfjs-dist@3.4.120/cmaps/',
+              cMapPacked: true,
+            }}
           >
             <Page 
               pageNumber={pageNumber} 

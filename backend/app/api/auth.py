@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.deps import get_db, get_current_user
 from app.models.user import User
-from app.schemas.user import User as UserSchema, UserCreate
-from app.schemas.auth import Token
+from app.schemas.user import UserSchema, UserCreateSchema
+from app.schemas.auth import TokenSchema
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +37,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 @router.post("/signup", response_model=UserSchema)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
+def create_user(user: UserCreateSchema, db: Session = Depends(get_db)):
     logger.info(f"Attempting to create user with email: {user.email}", user.username)
     try:
         db_user = db.query(User).filter(User.email == user.email).first()
@@ -65,7 +65,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=TokenSchema)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     logger.info(f"Login attempt for user: {form_data.username}")
     try:

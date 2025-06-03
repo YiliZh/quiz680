@@ -6,14 +6,14 @@ from typing import List, Optional
 import shutil
 import traceback
 from pydantic import BaseModel
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from app.core.deps import get_db, get_current_user
 from app.core.config import settings
 from app.models.upload import Upload as UploadModel
 from app.models.chapter import Chapter as ChapterModel
 from app.models.user import User
-from app.schemas import Upload as UploadSchema, UploadCreate, Chapter as ChapterSchema
+from app.schemas import UploadSchema, UploadCreateSchema, ChapterSchema
 from app.services.pdf import process_pdf
 
 # Configure logging
@@ -35,11 +35,11 @@ except Exception as e:
     logger.error(f"Failed to setup upload directory: {str(e)}")
     raise
 
-class UploadResponse(BaseModel):
+class UploadResponseSchema(BaseModel):
     upload: UploadSchema
     chapters: List[ChapterSchema]
 
-@router.post("/", response_model=UploadResponse)
+@router.post("/", response_model=UploadResponseSchema)
 async def create_upload(
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
@@ -137,7 +137,7 @@ async def create_upload(
             for chapter in chapters:
                 logger.info(f"Chapter details - ID: {chapter.id}, Chapter No: {chapter.chapter_no}, Title: {chapter.title}")
             
-            response = UploadResponse(upload=upload, chapters=chapters)
+            response = UploadResponseSchema(upload=upload, chapters=chapters)
             logger.info("Successfully created UploadResponse")
             return response
             
@@ -315,27 +315,108 @@ def get_chapter_summaries(
 ):
     """Get chapter summaries for a specific upload with pagination"""
     logger.info(f"Fetching chapter summaries for upload {upload_id} with pagination: skip={skip}, limit={limit}")
+    logger.info(f"User ID: {current_user.id}")
     
-    # Get the upload
-    upload = db.query(UploadModel).filter(
-        UploadModel.id == upload_id,
-        UploadModel.user_id == current_user.id
-    ).first()
-    
-    if not upload:
-        logger.warning(f"Upload {upload_id} not found for user {current_user.id}")
+    try:
+        # Get the upload and verify ownership
+        upload = db.query(UploadModel).filter(
+            UploadModel.id == upload_id,
+            UploadModel.user_id == current_user.id
+        ).first()
+        
+        if not upload:
+            logger.warning(f"Upload {upload_id} not found for user {current_user.id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Upload not found"
+            )
+        
+        logger.info(f"Found upload: id={upload.id}, filename={upload.filename}, status={upload.status}")
+        
+        # Get chapters with pagination
+        chapters = db.query(ChapterModel)\
+            .filter(ChapterModel.upload_id == upload_id)\
+            .order_by(ChapterModel.chapter_no)\
+            .offset(skip)\
+            .limit(limit)\
+            .all()
+        
+        logger.info(f"Found {len(chapters)} chapters for upload {upload_id}")
+        for chapter in chapters:
+            logger.info(f"Chapter details - ID: {chapter.id}, Chapter No: {chapter.chapter_no}, Title: {chapter.title}")
+        
+        return chapters
+        
+    except Exception as e:
+        logger.error(f"Error fetching chapter summaries: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Upload not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching chapter summaries: {str(e)}"
         )
+
+@router.get("/{upload_id}/pdf")
+async def get_pdf(
+    upload_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get the PDF file for a specific upload"""
+    logger.info(f"Fetching PDF for upload {upload_id} for user {current_user.id}")
     
-    # Get chapters with pagination
-    chapters = db.query(ChapterModel)\
-        .filter(ChapterModel.upload_id == upload_id)\
-        .order_by(ChapterModel.chapter_no)\
-        .offset(skip)\
-        .limit(limit)\
-        .all()
-    
-    logger.info(f"Found {len(chapters)} chapters for upload {upload_id}")
-    return chapters 
+    try:
+        # Get the upload and verify ownership
+        upload = db.query(UploadModel).filter(
+            UploadModel.id == upload_id,
+            UploadModel.user_id == current_user.id
+        ).first()
+        
+        if not upload:
+            logger.warning(f"Upload {upload_id} not found for user {current_user.id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Upload not found"
+            )
+        
+        logger.info(f"Found upload: id={upload.id}, filename={upload.filename}, file_path={upload.file_path}")
+        
+        if not upload.file_path:
+            logger.error(f"No file path found for upload {upload_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="PDF file path not found"
+            )
+        
+        if not os.path.exists(upload.file_path):
+            logger.error(f"PDF file not found at path: {upload.file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"PDF file not found at path: {upload.file_path}"
+            )
+        
+        # Check file permissions
+        if not os.access(upload.file_path, os.R_OK):
+            logger.error(f"No read permission for file: {upload.file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No permission to read PDF file"
+            )
+        
+        logger.info(f"Serving PDF file: {upload.file_path}")
+        return FileResponse(
+            upload.file_path,
+            media_type="application/pdf",
+            filename=upload.filename,
+            headers={
+                "Content-Disposition": f"inline; filename={upload.filename}",
+                "Cache-Control": "no-cache",
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving PDF for upload {upload_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error serving PDF file: {str(e)}"
+        ) 

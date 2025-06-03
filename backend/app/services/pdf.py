@@ -11,6 +11,27 @@ import traceback
 
 logger = logging.getLogger(__name__)
 
+def extract_summary(text: str, max_length: int = 500) -> str:
+    """Extract a summary from the text by taking the first paragraph"""
+    # Split into paragraphs and get the first non-empty one
+    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+    if not paragraphs:
+        return text[:max_length] if text else "No summary available"
+    
+    # Get the first paragraph
+    summary = paragraphs[0]
+    
+    # If it's too long, truncate it
+    if len(summary) > max_length:
+        # Try to find a good breaking point
+        break_point = summary.rfind('.', 0, max_length)
+        if break_point > 0:
+            summary = summary[:break_point + 1]
+        else:
+            summary = summary[:max_length] + '...'
+    
+    return summary
+
 async def process_pdf(file_path: str, upload_id: int, db: Session):
     """Process a PDF file and extract chapters"""
     print(f"\n=== PDF Processing Started ===")
@@ -69,13 +90,13 @@ async def process_pdf(file_path: str, upload_id: int, db: Session):
                                     print(f"Creating chapter {chapter_number} with {len(chapter_text)} characters")
                                     logger.info(f"Creating chapter {chapter_number} with {len(chapter_text)} characters")
                                     
-                                    # Create chapter using SQLAlchemy ORM (now matches your model perfectly)
+                                    # Create chapter using SQLAlchemy ORM
                                     chapter = Chapter(
                                         upload_id=upload_id,
                                         chapter_no=chapter_number,
                                         title=f"Chapter {chapter_number}",
                                         content=chapter_text,
-                                        summary=chapter_text[:500] if chapter_text else "No summary available",
+                                        summary=extract_summary(chapter_text),
                                         keywords=",".join(extract_keywords(chapter_text))
                                     )
                                     logger.info(f"Created chapter object - Number: {chapter_number}, Title: {chapter.title}")
@@ -102,7 +123,7 @@ async def process_pdf(file_path: str, upload_id: int, db: Session):
                             chapter_no=chapter_number,
                             title=f"Chapter {chapter_number}",
                             content=chapter_text,
-                            summary=chapter_text[:500] if chapter_text else "No summary available",
+                            summary=extract_summary(chapter_text),
                             keywords=",".join(extract_keywords(chapter_text))
                         )
                         logger.info(f"Created final chapter object - Number: {chapter_number}, Title: {chapter.title}")
@@ -119,7 +140,7 @@ async def process_pdf(file_path: str, upload_id: int, db: Session):
                             chapter_no=1,
                             title="Document",
                             content=all_text_combined,
-                            summary=all_text_combined[:500] if all_text_combined else "No summary available",
+                            summary=extract_summary(all_text_combined),
                             keywords=",".join(extract_keywords(all_text_combined))
                         )
                         logger.info(f"Created single chapter object - Number: 1, Title: {chapter.title}")

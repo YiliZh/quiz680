@@ -4,19 +4,19 @@ from typing import List
 
 from app.core.deps import get_db, get_current_user
 from app.models import Question, QuestionAttempt
-from app.schemas import QuestionCreate, QuestionResponse, AnswerSubmit
+from app.schemas import QuestionCreateSchema, QuestionResponseSchema, AnswerSubmitSchema
 from app.services.quiz import generate_questions
 
 router = APIRouter()
 
-@router.get("/{chapter_id}/questions", response_model=List[QuestionResponse])
+@router.get("/{chapter_id}/questions", response_model=List[QuestionResponseSchema])
 def get_questions(chapter_id: int, db: Session = Depends(get_db)):
     questions = db.query(Question).filter(Question.chapter_id == chapter_id).all()
     if not questions:
         raise HTTPException(status_code=404, detail="Questions not found")
     return questions
 
-@router.post("/{chapter_id}/questions", response_model=List[QuestionResponse])
+@router.post("/{chapter_id}/questions", response_model=List[QuestionResponseSchema])
 async def create_questions(
     chapter_id: int,
     db: Session = Depends(get_db),
@@ -28,7 +28,7 @@ async def create_questions(
 @router.post("/{question_id}/answer", response_model=dict)
 async def submit_answer(
     question_id: int,
-    answer: AnswerSubmit,
+    answer: AnswerSubmitSchema,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
