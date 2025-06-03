@@ -18,3 +18,9 @@
 alembic init migrations
    alembic upgrade head
 ```
+
+## Dump database
+```
+   pg_dump -U postgres -h localhost -p 5432 -d quiz2 --schema-only -f C:\cims\code\yl\quiz680\docs\quiz2_0603.sql
+   123456
+```

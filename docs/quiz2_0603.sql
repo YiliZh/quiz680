@@ -66,26 +66,19 @@ ALTER SEQUENCE public.attempts_id_seq OWNED BY public.attempts.id;
 
 CREATE TABLE public.chapters (
     id integer NOT NULL,
-    upload_id integer NOT NULL,
+    chapter_no integer NOT NULL,
     title character varying NOT NULL,
+    content text NOT NULL,
     summary text,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
-    content text,
     keywords character varying(500),
-    chapter_no integer,
-    has_questions boolean DEFAULT false NOT NULL
+    upload_id integer NOT NULL,
+    has_questions boolean NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
 );
 
 
 ALTER TABLE public.chapters OWNER TO postgres;
-
---
--- Name: TABLE chapters; Type: COMMENT; Schema: public; Owner: postgres
---
-
-COMMENT ON TABLE public.chapters IS 'Stores chapters extracted from uploaded PDFs';
-
 
 --
 -- Name: chapters_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -159,7 +152,8 @@ CREATE TABLE public.questions (
     correct_answer text NOT NULL,
     difficulty character varying(20) NOT NULL,
     chapter_id integer NOT NULL,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
 
 
@@ -382,27 +376,6 @@ CREATE INDEX idx_attempts_user_id ON public.attempts USING btree (user_id);
 
 
 --
--- Name: idx_chapters_keywords; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_chapters_keywords ON public.chapters USING gin (to_tsvector('english'::regconfig, (keywords)::text));
-
-
---
--- Name: idx_chapters_title; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_chapters_title ON public.chapters USING btree (title);
-
-
---
--- Name: idx_chapters_upload_id; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_chapters_upload_id ON public.chapters USING btree (upload_id);
-
-
---
 -- Name: idx_question_attempts_attempted_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -452,6 +425,13 @@ CREATE INDEX idx_users_username ON public.users USING btree (username);
 
 
 --
+-- Name: ix_chapters_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_chapters_id ON public.chapters USING btree (id);
+
+
+--
 -- Name: ix_question_attempts_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -474,19 +454,11 @@ ALTER TABLE ONLY public.attempts
 
 
 --
--- Name: questions fk_chapter; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.questions
-    ADD CONSTRAINT fk_chapter FOREIGN KEY (chapter_id) REFERENCES public.chapters(id) ON DELETE CASCADE;
-
-
---
--- Name: chapters fk_chapters_upload; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: chapters chapters_upload_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.chapters
-    ADD CONSTRAINT fk_chapters_upload FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE CASCADE;
+    ADD CONSTRAINT chapters_upload_id_fkey FOREIGN KEY (upload_id) REFERENCES public.uploads(id) ON DELETE CASCADE;
 
 
 --

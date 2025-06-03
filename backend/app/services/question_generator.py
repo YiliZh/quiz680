@@ -44,15 +44,15 @@ class QuestionGenerator:
             short_answer_count = num_questions - mcq_count - tf_count
             
             # Generate Multiple Choice Questions
-            mcqs = self._generate_mcqs(important_sentences, key_concepts, mcq_count)
+            mcqs = self._generate_mcqs(important_sentences, key_concepts, mcq_count, chapter)
             questions.extend(mcqs)
             
             # Generate True/False Questions
-            tf_questions = self._generate_true_false(important_sentences, tf_count)
+            tf_questions = self._generate_true_false(important_sentences, tf_count, chapter)
             questions.extend(tf_questions)
             
             # Generate Short Answer Questions
-            short_answers = self._generate_short_answer(important_sentences, short_answer_count)
+            short_answers = self._generate_short_answer(important_sentences, short_answer_count, chapter)
             questions.extend(short_answers)
             
             logger.info(f"Successfully generated {len(questions)} questions for chapter {chapter.id}")
@@ -80,7 +80,7 @@ class QuestionGenerator:
         # This is a simplified version - in production, use more sophisticated methods
         return sentences[:10]
 
-    def _generate_mcqs(self, sentences: List[str], key_concepts: List[str], count: int) -> List[QuestionCreateSchema]:
+    def _generate_mcqs(self, sentences: List[str], key_concepts: List[str], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
         """Generate multiple choice questions."""
         logger.debug(f"Generating {count} MCQs")
         questions = []
@@ -107,7 +107,8 @@ class QuestionGenerator:
                     question_type="multiple_choice",
                     options=["A", "B", "C", "D"],  # This should be generated
                     correct_answer="A",  # This should be determined
-                    difficulty="medium"
+                    difficulty="medium",
+                    chapter_id=chapter.id
                 )
                 questions.append(question)
                 
@@ -117,7 +118,7 @@ class QuestionGenerator:
                 
         return questions
 
-    def _generate_true_false(self, sentences: List[str], count: int) -> List[QuestionCreateSchema]:
+    def _generate_true_false(self, sentences: List[str], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
         """Generate true/false questions."""
         logger.debug(f"Generating {count} True/False questions")
         questions = []
@@ -144,7 +145,8 @@ class QuestionGenerator:
                     question_type="true_false",
                     options=["True", "False"],
                     correct_answer="True",  # This should be determined
-                    difficulty="medium"
+                    difficulty="medium",
+                    chapter_id=chapter.id
                 )
                 questions.append(question)
                 
@@ -154,7 +156,7 @@ class QuestionGenerator:
                 
         return questions
 
-    def _generate_short_answer(self, sentences: List[str], count: int) -> List[QuestionCreateSchema]:
+    def _generate_short_answer(self, sentences: List[str], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
         """Generate short answer questions."""
         logger.debug(f"Generating {count} Short Answer questions")
         questions = []
@@ -181,7 +183,8 @@ class QuestionGenerator:
                     question_type="short_answer",
                     options=[],  # No options for short answer
                     correct_answer="",  # This should be determined
-                    difficulty="medium"
+                    difficulty="medium",
+                    chapter_id=chapter.id
                 )
                 questions.append(question)
                 
