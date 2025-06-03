@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr
+from datetime import datetime
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -10,6 +11,8 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: int
     is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True 

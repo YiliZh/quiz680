@@ -16,10 +16,16 @@ export const useUploadFile = () => {
       // Add title to formData
       formData.append('title', title);
       
+      // Create a new axios instance for this request to override default headers
       const response = await api.post<Upload>('/api/uploads', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
+          'Accept': 'application/json',
         },
+        // Add timeout and max content length
+        timeout: 30000, // 30 seconds
+        maxContentLength: 50 * 1024 * 1024, // 50MB
+        maxBodyLength: 50 * 1024 * 1024, // 50MB
       });
       return response.data;
     },

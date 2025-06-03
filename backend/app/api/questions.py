@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.core.deps import get_db, get_current_user
-from app.models import Question, Attempt
-from app.schemas.question import QuestionCreate, QuestionResponse, AnswerSubmit
+from app.models import Question, QuestionAttempt
+from app.schemas import QuestionCreate, QuestionResponse, AnswerSubmit
 from app.services.quiz import generate_questions
 
 router = APIRouter()
@@ -36,8 +36,13 @@ async def submit_answer(
     question = db.query(Question).filter(Question.id == question_id).first()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    is_correct = answer.chosen_idx == question.answer_key
-    attempt = Attempt(user_id=1, question_id=question_id, chosen_idx=answer.chosen_idx, is_correct=is_correct)
+    is_correct = answer.chosen_answer == question.correct_answer
+    attempt = QuestionAttempt(
+        user_id=current_user.id,
+        question_id=question_id,
+        chosen_answer=answer.chosen_answer,
+        is_correct=is_correct
+    )
     db.add(attempt)
     db.commit()
     db.refresh(attempt)

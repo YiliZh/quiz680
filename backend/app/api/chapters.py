@@ -1,16 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import logging
 
 from app.core.deps import get_db, get_current_user
 from app.models import User, Chapter, Upload, Question
-from app.schemas import Chapter as ChapterSchema, QuestionResponse
+from app.schemas import Chapter, QuestionResponse
+from app.services.question_generator import QuestionGenerator
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.get("/uploads/{upload_id}/chapters", response_model=List[ChapterSchema])
+@router.get("/uploads/{upload_id}/chapters", response_model=List[Chapter])
 def get_chapters(
     upload_id: int,
     page: int = Query(1, ge=1),
@@ -52,7 +53,7 @@ def get_chapters(
         logger.error(f"Error fetching chapters for upload {upload_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.get("/{chapter_id}", response_model=ChapterSchema)
+@router.get("/{chapter_id}", response_model=Chapter)
 def get_chapter(
     chapter_id: int,
     db: Session = Depends(get_db),
@@ -109,36 +110,59 @@ def get_chapter_questions(
     
     return questions
 
-@router.post("/{chapter_id}/generate-questions")
+@router.post("/{chapter_id}/generate-questions", response_model=List[QuestionResponse])
 async def generate_questions(
     chapter_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None,
+    num_questions: int = Query(5, ge=1, le=20)
 ):
-    """Generate questions for a chapter"""
-    logger.info(f"Generating questions for chapter {chapter_id}")
-    
-    # Get the chapter and verify ownership
-    chapter = db.query(Chapter).join(Upload).filter(
-        Chapter.id == chapter_id,
-        Upload.user_id == current_user.id
-    ).first()
-    
-    if not chapter:
-        logger.warning(f"Chapter {chapter_id} not found for user {current_user.id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chapter not found"
-        )
+    """
+    Generate questions for a specific chapter.
+    """
+    logger.info(f"Generating {num_questions} questions for chapter {chapter_id}")
     
     try:
-        # TODO: Implement question generation logic
-        # For now, return a placeholder
-        return {"message": "Question generation not implemented yet"}
+        # Get the chapter and verify ownership
+        chapter = db.query(Chapter).join(Chapter.upload).filter(
+            Chapter.id == chapter_id,
+            Chapter.upload.user_id == current_user.id
+        ).first()
+        
+        if not chapter:
+            logger.warning(f"Chapter {chapter_id} not found for user {current_user.id}")
+            raise HTTPException(status_code=404, detail="Chapter not found")
+        
+        # Initialize question generator
+        generator = QuestionGenerator()
+        
+        # Generate questions
+        questions = generator.generate_questions(chapter, num_questions)
+        
+        # Save questions to database
+        db_questions = []
+        for question in questions:
+            db_question = Question(
+                question_text=question.question_text,
+                question_type=question.question_type,
+                options=question.options,
+                correct_answer=question.correct_answer,
+                difficulty=question.difficulty,
+                chapter_id=chapter_id
+            )
+            db.add(db_question)
+            db_questions.append(db_question)
+        
+        db.commit()
+        
+        # Refresh questions to get their IDs
+        for question in db_questions:
+            db.refresh(question)
+        
+        logger.info(f"Successfully generated and saved {len(db_questions)} questions for chapter {chapter_id}")
+        return db_questions
         
     except Exception as e:
-        logger.error(f"Error generating questions: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error generating questions: {str(e)}"
-        ) 
+        logger.error(f"Error generating questions for chapter {chapter_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error generating questions") 

@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.deps import get_db, get_current_user
-from app.models import User
-from app.schemas import UserCreate, User as UserSchema, Token
+from app.models.user import User
+from app.schemas.user import User as UserSchema, UserCreate
+from app.schemas.auth import Token
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

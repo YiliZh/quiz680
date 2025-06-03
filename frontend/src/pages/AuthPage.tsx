@@ -99,6 +99,7 @@ function AuthPage() {
             onChange={(e) => setEmail(e.target.value)}
             margin="normal"
             required
+            InputLabelProps={{ shrink: true }}
           />
           {!isLogin && (
             <TextField
@@ -108,6 +109,7 @@ function AuthPage() {
               onChange={(e) => setUsername(e.target.value)}
               margin="normal"
               required
+              InputLabelProps={{ shrink: true }}
             />
           )}
           <TextField
@@ -118,6 +120,7 @@ function AuthPage() {
             onChange={(e) => setPassword(e.target.value)}
             margin="normal"
             required
+            InputLabelProps={{ shrink: true }}
           />
           <Button
             fullWidth

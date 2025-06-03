@@ -11,5 +11,6 @@ class User(Base, TimestampMixin):
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
 
+    # Relationships
     uploads = relationship("Upload", back_populates="user", cascade="all, delete-orphan")
-    attempts = relationship("Attempt", back_populates="user", cascade="all, delete-orphan") 
+    question_attempts = relationship("QuestionAttempt", back_populates="user", cascade="all, delete-orphan") 

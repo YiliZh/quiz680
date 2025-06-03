@@ -6,10 +6,13 @@ from typing import List, Optional
 import shutil
 import traceback
 from pydantic import BaseModel
+from fastapi.responses import JSONResponse
 
 from app.core.deps import get_db, get_current_user
 from app.core.config import settings
-from app.models import User, Upload, Chapter
+from app.models.upload import Upload as UploadModel
+from app.models.chapter import Chapter as ChapterModel
+from app.models.user import User
 from app.schemas import Upload as UploadSchema, UploadCreate, Chapter as ChapterSchema
 from app.services.pdf import process_pdf
 
@@ -51,7 +54,8 @@ async def create_upload(
     
     logger.info(f"Upload request received from user {current_user.id} for file: {file.filename}")
     
-    if not file.filename.lower().endswith('.pdf'):
+    # Validate file type
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
         print("Error: Not a PDF file")
         logger.warning(f"Invalid file type attempted: {file.filename}")
         raise HTTPException(
@@ -59,10 +63,31 @@ async def create_upload(
             detail="Only PDF files are allowed"
         )
     
+    # Validate file size (50MB limit)
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    file_size = 0
+    try:
+        file.file.seek(0, 2)  # Seek to end
+        file_size = file.file.tell()
+        file.file.seek(0)  # Reset to beginning
+        
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File size exceeds maximum limit of 50MB"
+            )
+    except Exception as e:
+        logger.error(f"Error checking file size: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Error validating file size"
+        )
+    
     file_path = None
     try:
-        # Prepare file path
-        file_path = os.path.join(settings.UPLOAD_DIR, file.filename)
+        # Prepare file path with sanitized filename
+        safe_filename = "".join(c for c in file.filename if c.isalnum() or c in (' ', '-', '_', '.'))
+        file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
         logger.info(f"Prepared file path: {file_path}")
         
         # Save the file first
@@ -78,9 +103,9 @@ async def create_upload(
         print("\nCreating upload record...")
         logger.info(f"Creating upload record in database for file: {file.filename}")
         
-        upload = Upload(
-            filename=file.filename,
-            title=file.filename.replace('.pdf', ''),
+        upload = UploadModel(
+            filename=safe_filename,
+            title=title or safe_filename.replace('.pdf', ''),
             description=description,
             user_id=current_user.id,
             status="processing",  # Start processing immediately
@@ -105,7 +130,7 @@ async def create_upload(
             
             # Get the processed chapters
             logger.info(f"Fetching chapters for upload {upload.id}")
-            chapters = db.query(Chapter).filter(Chapter.upload_id == upload.id).all()
+            chapters = db.query(ChapterModel).filter(ChapterModel.upload_id == upload.id).all()
             logger.info(f"Found {len(chapters)} chapters for upload {upload.id}")
             
             # Log chapter details for debugging
@@ -154,7 +179,7 @@ def get_uploads(
     """Get all uploads for current user"""
     logger.info(f"Fetching uploads for user {current_user.id}")
     try:
-        uploads = db.query(Upload).filter(Upload.user_id == current_user.id).all()
+        uploads = db.query(UploadModel).filter(UploadModel.user_id == current_user.id).all()
         logger.info(f"Found {len(uploads)} uploads for user {current_user.id}")
         return uploads
     except Exception as e:
@@ -173,9 +198,9 @@ def get_upload(
     """Get a specific upload"""
     logger.info(f"Fetching upload {upload_id} for user {current_user.id}")
     try:
-        upload = db.query(Upload).filter(
-            Upload.id == upload_id,
-            Upload.user_id == current_user.id
+        upload = db.query(UploadModel).filter(
+            UploadModel.id == upload_id,
+            UploadModel.user_id == current_user.id
         ).first()
         if not upload:
             logger.warning(f"Upload {upload_id} not found for user {current_user.id}")
@@ -204,9 +229,9 @@ async def process_upload(
     logger.info(f"Processing upload {upload_id} for user {current_user.id}")
     
     # Get the upload
-    upload = db.query(Upload).filter(
-        Upload.id == upload_id,
-        Upload.user_id == current_user.id
+    upload = db.query(UploadModel).filter(
+        UploadModel.id == upload_id,
+        UploadModel.user_id == current_user.id
     ).first()
     
     if not upload:
@@ -262,9 +287,9 @@ def get_upload_chapters(
     logger.info(f"Fetching chapters for upload {upload_id}")
     
     # Get the upload
-    upload = db.query(Upload).filter(
-        Upload.id == upload_id,
-        Upload.user_id == current_user.id
+    upload = db.query(UploadModel).filter(
+        UploadModel.id == upload_id,
+        UploadModel.user_id == current_user.id
     ).first()
     
     if not upload:
@@ -275,7 +300,7 @@ def get_upload_chapters(
         )
     
     # Get chapters
-    chapters = db.query(Chapter).filter(Chapter.upload_id == upload_id).all()
+    chapters = db.query(ChapterModel).filter(ChapterModel.upload_id == upload_id).all()
     logger.info(f"Found {len(chapters)} chapters for upload {upload_id}")
     
     return chapters
@@ -292,9 +317,9 @@ def get_chapter_summaries(
     logger.info(f"Fetching chapter summaries for upload {upload_id} with pagination: skip={skip}, limit={limit}")
     
     # Get the upload
-    upload = db.query(Upload).filter(
-        Upload.id == upload_id,
-        Upload.user_id == current_user.id
+    upload = db.query(UploadModel).filter(
+        UploadModel.id == upload_id,
+        UploadModel.user_id == current_user.id
     ).first()
     
     if not upload:
@@ -305,9 +330,9 @@ def get_chapter_summaries(
         )
     
     # Get chapters with pagination
-    chapters = db.query(Chapter)\
-        .filter(Chapter.upload_id == upload_id)\
-        .order_by(Chapter.chapter_no)\
+    chapters = db.query(ChapterModel)\
+        .filter(ChapterModel.upload_id == upload_id)\
+        .order_by(ChapterModel.chapter_no)\
         .offset(skip)\
         .limit(limit)\
         .all()
