@@ -13,7 +13,10 @@ import {
   LinearProgress,
   Card,
   CardContent,
-  Stack
+  Stack,
+  Switch,
+  FormControl,
+  FormGroup
 } from '@mui/material'
 import { api } from '../services/api'
 import { useQuestions, useSubmitAnswer } from '../api/hooks'
@@ -26,6 +29,7 @@ function QuizPage() {
   const [showResults, setShowResults] = useState(false)
   const [score, setScore] = useState(0)
   const [currentAnswerFeedback, setCurrentAnswerFeedback] = useState<{ is_correct: boolean; explanation?: string } | null>(null)
+  const [showAnswer, setShowAnswer] = useState(true)
 
   const { data: questions, isLoading } = useQuestions(chapterId!)
   const submitAnswer = useSubmitAnswer()
@@ -199,7 +203,7 @@ function QuizPage() {
             </Stack>
           </RadioGroup>
 
-          {currentAnswerFeedback && (
+          {currentAnswerFeedback && showAnswer && (
             <Alert 
               severity={currentAnswerFeedback.is_correct ? 'success' : 'error'} 
               sx={{ mt: 2 }}
@@ -214,30 +218,48 @@ function QuizPage() {
             </Alert>
           )}
 
-          <Box display="flex" justifyContent="space-between" mt={3}>
-            <Button
-              variant="outlined"
-              onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
-              disabled={currentQuestionIndex === 0}
-            >
-              Previous
-            </Button>
-            {currentAnswerFeedback ? (
+          <Box display="flex" justifyContent="space-between" alignItems="center" mt={3}>
+            <FormControl component="fieldset">
+              <FormGroup>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={showAnswer}
+                      onChange={(e) => setShowAnswer(e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label="Show Answer"
+                />
+              </FormGroup>
+            </FormControl>
+
+            <Box>
               <Button
-                variant="contained"
-                onClick={handleNext}
+                variant="outlined"
+                onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
+                disabled={currentQuestionIndex === 0}
+                sx={{ mr: 1 }}
               >
-                {currentQuestionIndex === questions.length - 1 ? 'Finish' : 'Next'}
+                Previous
               </Button>
-            ) : (
-              <Button
-                variant="contained"
-                onClick={() => handleSubmit(currentQuestion.id)}
-                disabled={selectedAnswers[currentQuestion.id] === undefined || submitAnswer.isPending}
-              >
-                Submit Answer
-              </Button>
-            )}
+              {currentAnswerFeedback ? (
+                <Button
+                  variant="contained"
+                  onClick={handleNext}
+                >
+                  {currentQuestionIndex === questions.length - 1 ? 'Finish' : 'Next'}
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  onClick={() => handleSubmit(currentQuestion.id)}
+                  disabled={selectedAnswers[currentQuestion.id] === undefined || submitAnswer.isPending}
+                >
+                  Submit Answer
+                </Button>
+              )}
+            </Box>
           </Box>
         </Paper>
       )}

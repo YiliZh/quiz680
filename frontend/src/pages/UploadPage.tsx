@@ -1,33 +1,50 @@
 import React, { useState, useEffect } from 'react'
-import { Box, Button, Typography, Paper, List, ListItem, ListItemText, Alert, CircularProgress } from '@mui/material'
+import { Box, Button, Typography, Paper, List, ListItem, ListItemText, Alert, CircularProgress, Collapse, IconButton } from '@mui/material'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { useUploads, useUploadFile } from '../api/hooks'
+import { useUploadFile } from '../api/hooks'
+import { api } from '../services/api'
 import { Upload } from '../types'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+
+// Type guard to check if an object has processing_logs
+function hasProcessingLogs(obj: any): obj is Upload & { processing_logs: string } {
+  return obj && typeof obj.processing_logs === 'string'
+}
 
 export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [expandedUploads, setExpandedUploads] = useState<Set<number>>(new Set())
   const navigate = useNavigate()
   const { user } = useAuth()
   const queryClient = useQueryClient()
 
   console.log('UploadPage: Component rendered, user:', user?.id)
 
-  const { data: uploads, isLoading: isLoadingUploads, error: uploadsError } = useQuery<Upload[], Error>({
-    queryKey: ['uploads'],
-    queryFn: useUploads,
-    enabled: !!user,
-    retry: false
-  })
-
   useEffect(() => {
-    if (uploadsError?.message.includes('401')) {
-      console.log('UploadPage: Unauthorized access, redirecting to auth')
+    if (!user) {
+      console.log('UploadPage: No user found, redirecting to login')
       navigate('/auth')
     }
-  }, [uploadsError, navigate])
+  }, [user, navigate])
+
+  const { data: uploads, isLoading: isLoadingUploads, error: uploadsError } = useQuery<Upload[], Error>({
+    queryKey: ['uploads'],
+    queryFn: async () => {
+      const response = await api.get('/uploads')
+      return response.data
+    },
+    enabled: !!user,
+    retry: false,
+    refetchInterval: (query) => {
+      // If any upload is in processing state, refetch every 2 seconds
+      const queryData = query.state.data as Upload[] | undefined
+      return queryData?.some((upload) => upload.status === 'processing') ? 2000 : false
+    }
+  })
 
   const uploadMutation = useUploadFile()
 
@@ -82,9 +99,19 @@ export default function UploadPage() {
     }
   }
 
+  const toggleUploadExpansion = (uploadId: number) => {
+    setExpandedUploads(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(uploadId)) {
+        newSet.delete(uploadId)
+      } else {
+        newSet.add(uploadId)
+      }
+      return newSet
+    })
+  }
+
   if (!user) {
-    console.log('UploadPage: No user found, redirecting to login')
-    navigate('/auth')
     return null
   }
 
@@ -154,13 +181,48 @@ export default function UploadPage() {
       ) : uploads && Array.isArray(uploads) && uploads.length > 0 ? (
         <Box>
           {uploads.map((upload: Upload) => (
-            <Box key={upload.id} sx={{ mb: 2, p: 2, border: '1px solid #ddd' }}>
-              <Typography variant="h6">{upload.title}</Typography>
-              <Typography>Status: {upload.status}</Typography>
-              {upload.description && (
-                <Typography>Description: {upload.description}</Typography>
-              )}
-            </Box>
+            <Paper key={upload.id} sx={{ mb: 2, p: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box>
+                  <Typography variant="h6">{upload.title}</Typography>
+                  <Typography>Status: {upload.status}</Typography>
+                  {upload.description && (
+                    <Typography>Description: {upload.description}</Typography>
+                  )}
+                </Box>
+                {upload.status === 'processing' && (
+                  <IconButton onClick={() => toggleUploadExpansion(upload.id)}>
+                    {expandedUploads.has(upload.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  </IconButton>
+                )}
+              </Box>
+              <Collapse in={expandedUploads.has(upload.id)}>
+                {upload.processing_logs !== null && (
+                  <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Processing Logs:
+                    </Typography>
+                    <Box
+                      component="pre"
+                      sx={{
+                        maxHeight: '200px',
+                        overflow: 'auto',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        fontFamily: 'monospace',
+                        fontSize: '0.875rem',
+                        m: 0,
+                        p: 1,
+                        bgcolor: 'grey.50',
+                        borderRadius: 1
+                      }}
+                    >
+                      {upload.processing_logs}
+                    </Box>
+                  </Box>
+                )}
+              </Collapse>
+            </Paper>
           ))}
         </Box>
       ) : (
