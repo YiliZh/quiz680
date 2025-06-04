@@ -4,7 +4,7 @@ from typing import List
 
 from app.core.deps import get_db, get_current_user
 from app.models import Question, QuestionAttempt
-from app.schemas import QuestionCreateSchema, QuestionResponseSchema, AnswerSubmitSchema
+from app.schemas import QuestionCreateSchema, QuestionResponseSchema, AnswerSubmitSchema, QuestionAttemptResponseSchema
 from app.services.quiz import generate_questions
 
 router = APIRouter()
@@ -25,7 +25,7 @@ async def create_questions(
     """Generate questions for a chapter"""
     # ... existing code ...
 
-@router.post("/{question_id}/answer", response_model=dict)
+@router.post("/{question_id}/answer", response_model=QuestionAttemptResponseSchema)
 async def submit_answer(
     question_id: int,
     answer: AnswerSubmitSchema,
@@ -46,4 +46,11 @@ async def submit_answer(
     db.add(attempt)
     db.commit()
     db.refresh(attempt)
-    return attempt 
+    return {
+        "id": attempt.id,
+        "user_id": attempt.user_id,
+        "question_id": attempt.question_id,
+        "chosen_answer": attempt.chosen_answer,
+        "is_correct": attempt.is_correct,
+        "attempted_at": attempt.attempted_at
+    } 

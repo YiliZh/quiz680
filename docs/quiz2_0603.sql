@@ -112,7 +112,9 @@ CREATE TABLE public.question_attempts (
     question_id integer NOT NULL,
     chosen_answer text NOT NULL,
     is_correct boolean NOT NULL,
-    attempted_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+    attempted_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
 
 

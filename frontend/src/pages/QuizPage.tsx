@@ -15,7 +15,8 @@ import {
   CardContent,
   Stack
 } from '@mui/material'
-import axios from 'axios'
+import { api } from '../services/api'
+import { useQuestions, useSubmitAnswer } from '../api/hooks'
 
 function QuizPage() {
   const { chapterId } = useParams()
@@ -25,30 +26,8 @@ function QuizPage() {
   const [showResults, setShowResults] = useState(false)
   const [score, setScore] = useState(0)
 
-  const { data: questions, isLoading } = useQuery({
-    queryKey: ['questions', chapterId],
-    queryFn: async () => {
-      const response = await axios.get(`/api/questions/${chapterId}/questions`)
-      return response.data
-    }
-  })
-
-  const submitMutation = useMutation({
-    mutationFn: async ({ questionId, chosenIdx }: { questionId: number; chosenIdx: number }) => {
-      const response = await axios.post(`/api/questions/${questionId}/answer`, { chosen_idx: chosenIdx })
-      return response.data
-    },
-    onSuccess: (data) => {
-      if (data.is_correct) {
-        setScore(prev => prev + 1)
-      }
-      if (currentQuestionIndex < questions.length - 1) {
-        setCurrentQuestionIndex(prev => prev + 1)
-      } else {
-        setShowResults(true)
-      }
-    }
-  })
+  const { data: questions, isLoading } = useQuestions(chapterId!)
+  const submitAnswer = useSubmitAnswer()
 
   const handleAnswerSelect = (questionId: number, answerIndex: number) => {
     setSelectedAnswers(prev => ({
@@ -59,8 +38,25 @@ function QuizPage() {
 
   const handleSubmit = (questionId: number) => {
     const selectedAnswer = selectedAnswers[questionId]
-    if (selectedAnswer !== undefined) {
-      submitMutation.mutate({ questionId, chosenIdx: selectedAnswer })
+    if (selectedAnswer !== undefined && currentQuestion) {
+      submitAnswer.mutate(
+        { 
+          question_id: questionId,
+          chosen_answer: currentQuestion.options[selectedAnswer]
+        },
+        {
+          onSuccess: (data) => {
+            if (data.is_correct) {
+              setScore(prev => prev + 1)
+            }
+            if (currentQuestionIndex < questions.length - 1) {
+              setCurrentQuestionIndex(prev => prev + 1)
+            } else {
+              setShowResults(true)
+            }
+          }
+        }
+      )
     }
   }
 
@@ -85,7 +81,7 @@ function QuizPage() {
               Quiz Complete!
             </Typography>
             <Typography variant="h5" gutterBottom align="center">
-              Your Score: {score} out of {questions.length}
+              Your Score: {score} out of {questions?.length}
             </Typography>
             <Box display="flex" justifyContent="center" mt={3}>
               <Button variant="contained" onClick={handleFinish}>
@@ -103,7 +99,7 @@ function QuizPage() {
   return (
     <Box maxWidth="800px" mx="auto" mt={4}>
       <Box mb={3}>
-        <Typography variant="h5" gutterBottom>
+        <Typography variant="h6" gutterBottom align="center" color="text.secondary">
           Question {currentQuestionIndex + 1} of {questions?.length}
         </Typography>
         <LinearProgress 
@@ -115,8 +111,53 @@ function QuizPage() {
 
       {currentQuestion && (
         <Paper elevation={3} sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            {currentQuestion.q_text}
+          {(() => {
+            if (!currentQuestion.question_text) {
+              return (
+                <Typography variant="h5" gutterBottom color="primary">
+                  Question {currentQuestionIndex + 1}
+                </Typography>
+              );
+            }
+
+            const parts = currentQuestion.question_text.split('\n\nContext:');
+            const question = parts[0] || '';
+            const context = parts[1] || '';
+            
+            return (
+              <>
+                <Typography variant="h5" gutterBottom color="primary" sx={{ mb: 2 }}>
+                  {question}
+                </Typography>
+                {context && (
+                  <Paper 
+                    elevation={0}
+                    sx={{ 
+                      mb: 3, 
+                      p: 2, 
+                      bgcolor: 'grey.50', 
+                      borderRadius: 1,
+                      border: '1px solid',
+                      borderColor: 'divider'
+                    }}
+                  >
+                    <Typography 
+                      variant="body1" 
+                      sx={{ 
+                        fontStyle: 'italic',
+                        color: 'text.secondary'
+                      }}
+                    >
+                      {context}
+                    </Typography>
+                  </Paper>
+                )}
+              </>
+            );
+          })()}
+          
+          <Typography variant="h6" gutterBottom color="primary" sx={{ mt: 2 }}>
+            Select the correct answer:
           </Typography>
           
           <RadioGroup
@@ -155,20 +196,20 @@ function QuizPage() {
             <Button
               variant="contained"
               onClick={() => handleSubmit(currentQuestion.id)}
-              disabled={selectedAnswers[currentQuestion.id] === undefined || submitMutation.isPending}
+              disabled={selectedAnswers[currentQuestion.id] === undefined || submitAnswer.isPending}
             >
               {currentQuestionIndex === questions.length - 1 ? 'Finish' : 'Next'}
             </Button>
           </Box>
 
-          {submitMutation.data && (
+          {submitAnswer.data && (
             <Alert 
-              severity={submitMutation.data.is_correct ? 'success' : 'error'} 
+              severity={submitAnswer.data.is_correct ? 'success' : 'error'} 
               sx={{ mt: 2 }}
             >
-              {submitMutation.data.is_correct ? 'Correct!' : 'Incorrect.'}
+              {submitAnswer.data.is_correct ? 'Correct!' : 'Incorrect.'}
               <br />
-              {submitMutation.data.explanation}
+              {submitAnswer.data.explanation}
             </Alert>
           )}
         </Paper>

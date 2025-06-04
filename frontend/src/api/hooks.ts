@@ -44,8 +44,11 @@ export const useQuestions = (chapterId: string) => {
 
 export const useSubmitAnswer = () => {
   return useMutation({
-    mutationFn: async ({ questionId, chosenIdx }: { questionId: number; chosenIdx: number }) => {
-      const response = await api.post(`/api/questions/${questionId}/answer`, { chosen_idx: chosenIdx })
+    mutationFn: async ({ question_id, chosen_answer }: { question_id: number; chosen_answer: string }) => {
+      const response = await api.post(`/api/questions/${question_id}/answer`, { 
+        question_id,
+        chosen_answer 
+      })
       return response.data
     }
   })
