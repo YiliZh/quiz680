@@ -25,6 +25,7 @@ function QuizPage() {
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({})
   const [showResults, setShowResults] = useState(false)
   const [score, setScore] = useState(0)
+  const [currentAnswerFeedback, setCurrentAnswerFeedback] = useState<{ is_correct: boolean; explanation?: string } | null>(null)
 
   const { data: questions, isLoading } = useQuestions(chapterId!)
   const submitAnswer = useSubmitAnswer()
@@ -34,6 +35,8 @@ function QuizPage() {
       ...prev,
       [questionId]: answerIndex
     }))
+    // Clear feedback when selecting a new answer
+    setCurrentAnswerFeedback(null)
   }
 
   const handleSubmit = (questionId: number) => {
@@ -46,17 +49,28 @@ function QuizPage() {
         },
         {
           onSuccess: (data) => {
+            // Show feedback immediately
+            setCurrentAnswerFeedback({
+              is_correct: data.is_correct,
+              explanation: data.explanation
+            })
+            
             if (data.is_correct) {
               setScore(prev => prev + 1)
-            }
-            if (currentQuestionIndex < questions.length - 1) {
-              setCurrentQuestionIndex(prev => prev + 1)
-            } else {
-              setShowResults(true)
             }
           }
         }
       )
+    }
+  }
+
+  const handleNext = () => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1)
+      // Clear feedback when moving to next question
+      setCurrentAnswerFeedback(null)
+    } else {
+      setShowResults(true)
     }
   }
 
@@ -185,6 +199,21 @@ function QuizPage() {
             </Stack>
           </RadioGroup>
 
+          {currentAnswerFeedback && (
+            <Alert 
+              severity={currentAnswerFeedback.is_correct ? 'success' : 'error'} 
+              sx={{ mt: 2 }}
+            >
+              {currentAnswerFeedback.is_correct ? 'Correct!' : 'Incorrect.'}
+              {currentAnswerFeedback.explanation && (
+                <>
+                  <br />
+                  {currentAnswerFeedback.explanation}
+                </>
+              )}
+            </Alert>
+          )}
+
           <Box display="flex" justifyContent="space-between" mt={3}>
             <Button
               variant="outlined"
@@ -193,25 +222,23 @@ function QuizPage() {
             >
               Previous
             </Button>
-            <Button
-              variant="contained"
-              onClick={() => handleSubmit(currentQuestion.id)}
-              disabled={selectedAnswers[currentQuestion.id] === undefined || submitAnswer.isPending}
-            >
-              {currentQuestionIndex === questions.length - 1 ? 'Finish' : 'Next'}
-            </Button>
+            {currentAnswerFeedback ? (
+              <Button
+                variant="contained"
+                onClick={handleNext}
+              >
+                {currentQuestionIndex === questions.length - 1 ? 'Finish' : 'Next'}
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                onClick={() => handleSubmit(currentQuestion.id)}
+                disabled={selectedAnswers[currentQuestion.id] === undefined || submitAnswer.isPending}
+              >
+                Submit Answer
+              </Button>
+            )}
           </Box>
-
-          {submitAnswer.data && (
-            <Alert 
-              severity={submitAnswer.data.is_correct ? 'success' : 'error'} 
-              sx={{ mt: 2 }}
-            >
-              {submitAnswer.data.is_correct ? 'Correct!' : 'Incorrect.'}
-              <br />
-              {submitAnswer.data.explanation}
-            </Alert>
-          )}
         </Paper>
       )}
     </Box>
