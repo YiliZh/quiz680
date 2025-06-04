@@ -1,13 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+import logging
 
 from app.core.deps import get_db, get_current_user
 from app.models import Question, QuestionAttempt
 from app.schemas import QuestionCreateSchema, QuestionResponseSchema, AnswerSubmitSchema, QuestionAttemptResponseSchema
 from app.services.quiz import generate_questions
+from app.services.question_generator import QuestionGenerator
+from app.services.chatgpt_question_generator import ChatGPTQuestionGenerator
+from app.models.user import User
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.get("/{chapter_id}/questions", response_model=List[QuestionResponseSchema])
 def get_questions(chapter_id: int, db: Session = Depends(get_db)):
@@ -16,14 +21,52 @@ def get_questions(chapter_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Questions not found")
     return questions
 
-@router.post("/{chapter_id}/questions", response_model=List[QuestionResponseSchema])
-async def create_questions(
-    chapter_id: int,
+@router.post("/generate", response_model=List[QuestionResponseSchema])
+async def generate_questions(
+    content: str = Form(...),
+    num_questions: int = Form(5),
+    difficulty: str = Form("mixed"),
+    generator_type: str = Form("default"),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
-    """Generate questions for a chapter"""
-    # ... existing code ...
+    """
+    Generate questions based on content using either default or ChatGPT generator.
+    """
+    try:
+        if generator_type == "chatgpt":
+            generator = ChatGPTQuestionGenerator()
+        else:
+            generator = QuestionGenerator()
+
+        questions = await generator.generate_questions(
+            content=content,
+            num_questions=num_questions,
+            difficulty=difficulty
+        )
+        
+        # Save questions to database
+        db_questions = []
+        for q in questions:
+            db_question = Question(
+                question_text=q["question_text"],
+                options=q["options"],
+                correct_answer=q["correct_answer"],
+                question_type=q["question_type"],
+                difficulty=q.get("difficulty", "medium"),
+                chapter_id=current_user.current_chapter_id
+            )
+            db.add(db_question)
+            db_questions.append(db_question)
+        
+        db.commit()
+        for q in db_questions:
+            db.refresh(q)
+        
+        return db_questions
+    except Exception as e:
+        logger.error(f"Error generating questions: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{question_id}/answer", response_model=QuestionAttemptResponseSchema)
 async def submit_answer(

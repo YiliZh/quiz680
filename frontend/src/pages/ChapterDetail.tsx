@@ -11,7 +11,16 @@ import {
   Button,
   Alert,
   Stack,
-  Collapse
+  Collapse,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -19,7 +28,8 @@ import {
   Quiz as QuizIcon,
   Add as AddIcon,
   ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon
+  ExpandLess as ExpandLessIcon,
+  SmartToy as SmartToyIcon
 } from '@mui/icons-material';
 import { api } from '../services/api';
 
@@ -45,6 +55,13 @@ const ChapterDetail: React.FC = () => {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationLogs, setGenerationLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  
+  // New state for question generation dialog
+  const [openDialog, setOpenDialog] = useState(false);
+  const [content, setContent] = useState('');
+  const [numQuestions, setNumQuestions] = useState(5);
+  const [difficulty, setDifficulty] = useState('mixed');
+  const [generatorType, setGeneratorType] = useState<'default' | 'chatgpt'>('default');
 
   useEffect(() => {
     console.log('ChapterDetail mounted with chapterId:', chapterId);
@@ -102,6 +119,17 @@ const ChapterDetail: React.FC = () => {
     }
   };
 
+  const handleOpenDialog = (type: 'default' | 'chatgpt') => {
+    setGeneratorType(type);
+    setContent(chapter?.content || '');
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setGenerationError(null);
+  };
+
   const handleGenerateQuestions = async () => {
     if (!chapter) return;
     
@@ -114,14 +142,29 @@ const ChapterDetail: React.FC = () => {
       // Add initial log
       setGenerationLogs(prev => [...prev, 'Starting question generation process...']);
       
-      // Generate questions
-      const response = await api.post(`/chapters/${chapterId}/generate-questions?num_questions=5`);
-      
+      const formData = new FormData();
+      formData.append('content', content);
+      formData.append('num_questions', numQuestions.toString());
+      formData.append('difficulty', difficulty);
+      formData.append('generator_type', generatorType);
+
+      const response = await fetch(`${api.defaults.baseURL}/questions/generate`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to generate questions');
+      }
+
       // Add success log
       setGenerationLogs(prev => [...prev, 'Question generation completed successfully!']);
       
       // Refresh chapter data to update has_questions status
       await fetchChapter();
+      handleCloseDialog();
     } catch (err: any) {
       setGenerationError(err.response?.data?.detail || 'Failed to generate questions');
       setGenerationLogs(prev => [...prev, `Error: ${err.response?.data?.detail || 'Failed to generate questions'}`]);
@@ -198,26 +241,32 @@ const ChapterDetail: React.FC = () => {
           >
             View in PDF
           </Button>
-
           <Button
             variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={handleGenerateQuestions}
+            onClick={() => handleOpenDialog('default')}
+            startIcon={<QuizIcon />}
             disabled={generatingQuestions}
           >
-            {generatingQuestions ? 'Generating Questions...' : 'Generate Questions'}
+            Generate Questions
           </Button>
-
           <Button
             variant="contained"
-            color="success"
-            startIcon={<QuizIcon />}
-            onClick={handleStartQuiz}
-            disabled={!chapter.question_count || chapter.question_count === 0}
+            color="secondary"
+            onClick={() => handleOpenDialog('chatgpt')}
+            startIcon={<SmartToyIcon />}
+            disabled={generatingQuestions}
           >
-            Take Quiz {chapter.question_count ? `(${chapter.question_count} questions)` : ''}
+            Generate via ChatGPT
           </Button>
+          {chapter.has_questions && (
+            <Button
+              variant="outlined"
+              onClick={handleStartQuiz}
+              startIcon={<QuizIcon />}
+            >
+              Take Quiz
+            </Button>
+          )}
         </Stack>
 
         {generationError && (
@@ -227,39 +276,17 @@ const ChapterDetail: React.FC = () => {
         )}
 
         {generationLogs.length > 0 && (
-          <Box sx={{ mt: 2 }}>
+          <Box mt={2}>
             <Button
               onClick={toggleLogs}
               endIcon={showLogs ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-              size="small"
             >
-              {showLogs ? 'Hide Generation Logs' : 'Show Generation Logs'}
+              {showLogs ? 'Hide Logs' : 'Show Logs'}
             </Button>
             <Collapse in={showLogs}>
-              <Paper 
-                variant="outlined" 
-                sx={{ 
-                  mt: 1, 
-                  p: 2, 
-                  maxHeight: '300px', 
-                  overflow: 'auto',
-                  backgroundColor: '#f5f5f5'
-                }}
-              >
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Generation Process Logs:
-                </Typography>
+              <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
                 {generationLogs.map((log, index) => (
-                  <Typography 
-                    key={index} 
-                    variant="body2" 
-                    component="div" 
-                    sx={{ 
-                      fontFamily: 'monospace',
-                      whiteSpace: 'pre-wrap',
-                      mb: 0.5
-                    }}
-                  >
+                  <Typography key={index} variant="body2">
                     {log}
                   </Typography>
                 ))}
@@ -269,14 +296,61 @@ const ChapterDetail: React.FC = () => {
         )}
       </Paper>
 
-      <Paper elevation={3} sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Full Content
-        </Typography>
-        <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-          {chapter.content}
-        </Typography>
-      </Paper>
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {generatorType === 'chatgpt' ? 'Generate Questions via ChatGPT' : 'Generate Questions'}
+        </DialogTitle>
+        <DialogContent>
+          {generationError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {generationError}
+            </Alert>
+          )}
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            label="Enter content"
+            margin="normal"
+          />
+          <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              type="number"
+              value={numQuestions}
+              onChange={(e) => setNumQuestions(parseInt(e.target.value))}
+              label="Number of Questions"
+              InputProps={{ inputProps: { min: 1, max: 10 } }}
+            />
+            <FormControl>
+              <InputLabel>Difficulty</InputLabel>
+              <Select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+                label="Difficulty"
+              >
+                <MenuItem value="easy">Easy</MenuItem>
+                <MenuItem value="medium">Medium</MenuItem>
+                <MenuItem value="hard">Hard</MenuItem>
+                <MenuItem value="mixed">Mixed</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleGenerateQuestions}
+            disabled={!content || generatingQuestions}
+            color={generatorType === 'chatgpt' ? 'secondary' : 'primary'}
+            startIcon={generatorType === 'chatgpt' ? <SmartToyIcon /> : undefined}
+          >
+            {generatingQuestions ? 'Generating...' : 'Generate Questions'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
