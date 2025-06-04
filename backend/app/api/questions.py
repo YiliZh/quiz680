@@ -36,21 +36,44 @@ async def submit_answer(
     question = db.query(Question).filter(Question.id == question_id).first()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    is_correct = answer.chosen_answer == question.correct_answer
+    
+    is_correct = False
+    
+    if question.question_type == "multiple_choice":
+        # Get the index of the correct answer in the options array
+        correct_index = ord(question.correct_answer) - ord('A')
+        if correct_index < 0 or correct_index >= len(question.options):
+            raise HTTPException(status_code=500, detail="Invalid correct answer format")
+        
+        # Get the correct answer text
+        correct_answer_text = question.options[correct_index]
+        
+        # Check if the answer matches either the letter or the text
+        is_correct = (
+            answer.chosen_answer == question.correct_answer or  # Letter match (A, B, C, D)
+            answer.chosen_answer == correct_answer_text  # Text match
+        )
+    elif question.question_type == "true_false":
+        # For true/false questions, handle both letter and text formats
+        correct_answer = question.correct_answer.lower()
+        chosen_answer = answer.chosen_answer.lower()
+        
+        # Map letter answers to True/False
+        if chosen_answer in ['a', 'b']:
+            chosen_answer = 'true' if chosen_answer == 'a' else 'false'
+        
+        is_correct = chosen_answer == correct_answer
+    
+    # Create the attempt record
     attempt = QuestionAttempt(
         user_id=current_user.id,
         question_id=question_id,
         chosen_answer=answer.chosen_answer,
         is_correct=is_correct
     )
+    
     db.add(attempt)
     db.commit()
     db.refresh(attempt)
-    return {
-        "id": attempt.id,
-        "user_id": attempt.user_id,
-        "question_id": attempt.question_id,
-        "chosen_answer": attempt.chosen_answer,
-        "is_correct": attempt.is_correct,
-        "attempted_at": attempt.attempted_at
-    } 
+    
+    return attempt 

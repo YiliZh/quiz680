@@ -47,14 +47,15 @@ def upgrade() -> None:
     op.create_index(op.f('ix_chapters_id'), 'chapters', ['id'], unique=False)
     op.create_table('questions',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('q_text', sa.Text(), nullable=False),
-    sa.Column('options', sa.ARRAY(sa.String()), nullable=False),
-    sa.Column('correct_idx', sa.Integer(), nullable=False),
-    sa.Column('explanation', sa.Text(), nullable=True),
+    sa.Column('question_text', sa.Text(), nullable=False),
+    sa.Column('question_type', sa.String(50), nullable=False),
+    sa.Column('options', sa.ARRAY(sa.Text()), nullable=True),
+    sa.Column('correct_answer', sa.Text(), nullable=False),
+    sa.Column('difficulty', sa.String(20), nullable=False),
     sa.Column('chapter_id', sa.Integer(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
-    sa.ForeignKeyConstraint(['chapter_id'], ['chapters.id'], ),
+    sa.ForeignKeyConstraint(['chapter_id'], ['chapters.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_questions_id'), 'questions', ['id'], unique=False)

@@ -13,205 +13,202 @@ import {
   LinearProgress,
   Card,
   CardContent,
-  Stack
+  Stack,
+  Switch,
+  FormControl,
+  FormGroup
 } from '@mui/material'
 import { api } from '../services/api'
 import { useQuestions, useSubmitAnswer } from '../api/hooks'
+
+interface Question {
+  id: number;
+  question_text: string;
+  question_type: string;
+  options: string[];
+  correct_answer: string;
+}
 
 function QuizPage() {
   const { chapterId } = useParams()
   const navigate = useNavigate()
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({})
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({})
   const [showResults, setShowResults] = useState(false)
   const [score, setScore] = useState(0)
+  const [currentAnswerFeedback, setCurrentAnswerFeedback] = useState<{ is_correct: boolean; explanation?: string } | null>(null)
+  const [showAnswer, setShowAnswer] = useState(true)
 
-  const { data: questions, isLoading } = useQuestions(chapterId!)
+  const { data: questions = [], isLoading } = useQuestions(chapterId!) as { data: Question[] | undefined, isLoading: boolean }
   const submitAnswer = useSubmitAnswer()
 
-  const handleAnswerSelect = (questionId: number, answerIndex: number) => {
+  const handleAnswerSelect = (questionId: number, answer: string) => {
     setSelectedAnswers(prev => ({
       ...prev,
-      [questionId]: answerIndex
+      [questionId]: answer
     }))
+    // Clear feedback when selecting a new answer
+    setCurrentAnswerFeedback(null)
   }
 
-  const handleSubmit = (questionId: number) => {
+  const handleSubmit = async (questionId: number) => {
     const selectedAnswer = selectedAnswers[questionId]
-    if (selectedAnswer !== undefined && currentQuestion) {
-      submitAnswer.mutate(
-        { 
-          question_id: questionId,
-          chosen_answer: currentQuestion.options[selectedAnswer]
-        },
-        {
-          onSuccess: (data) => {
-            if (data.is_correct) {
-              setScore(prev => prev + 1)
-            }
-            if (currentQuestionIndex < questions.length - 1) {
-              setCurrentQuestionIndex(prev => prev + 1)
-            } else {
-              setShowResults(true)
-            }
-          }
+    if (selectedAnswer === undefined) return
+
+    try {
+      const currentQuestion = questions[currentQuestionIndex]
+      let answerToSubmit = selectedAnswer
+
+      if (currentQuestion.question_type === "multiple_choice") {
+        // Get the index of the selected answer in the options array
+        const selectedIndex = currentQuestion.options.indexOf(selectedAnswer)
+        if (selectedIndex === -1) {
+          console.error('Selected answer not found in options')
+          return
         }
-      )
+
+        // Convert the selected answer to a letter (A, B, C, D)
+        answerToSubmit = String.fromCharCode(65 + selectedIndex)
+      } else if (currentQuestion.question_type === "true_false") {
+        // For true/false questions, convert A/B to True/False
+        answerToSubmit = selectedAnswer === "A" ? "True" : "False"
+      }
+
+      const result = await submitAnswer.mutateAsync({
+        question_id: questionId,
+        chosen_answer: answerToSubmit
+      })
+      
+      setCurrentAnswerFeedback({
+        is_correct: result.is_correct,
+        explanation: result.is_correct ? "Correct!" : "Incorrect. Try again!"
+      })
+
+      if (result.is_correct) {
+        setScore(prev => prev + 1)
+      }
+    } catch (error) {
+      console.error('Error submitting answer:', error)
     }
   }
 
-  const handleFinish = () => {
-    navigate(`/chapters/${chapterId}`)
+  const handleNext = () => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1)
+      setCurrentAnswerFeedback(null)
+    } else {
+      setShowResults(true)
+    }
   }
 
   if (isLoading) {
+    return <LinearProgress />
+  }
+
+  if (!questions || questions.length === 0) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
-        <LinearProgress />
+      <Box p={3}>
+        <Alert severity="info">No questions available for this chapter.</Alert>
       </Box>
     )
   }
 
-  if (showResults) {
-    return (
-      <Box maxWidth="600px" mx="auto" mt={4}>
-        <Card>
-          <CardContent>
-            <Typography variant="h4" gutterBottom align="center">
-              Quiz Complete!
-            </Typography>
-            <Typography variant="h5" gutterBottom align="center">
-              Your Score: {score} out of {questions?.length}
-            </Typography>
-            <Box display="flex" justifyContent="center" mt={3}>
-              <Button variant="contained" onClick={handleFinish}>
-                Return to Chapter
-              </Button>
-            </Box>
-          </CardContent>
-        </Card>
-      </Box>
-    )
-  }
-
-  const currentQuestion = questions?.[currentQuestionIndex]
+  const currentQuestion = questions[currentQuestionIndex]
 
   return (
-    <Box maxWidth="800px" mx="auto" mt={4}>
-      <Box mb={3}>
-        <Typography variant="h6" gutterBottom align="center" color="text.secondary">
-          Question {currentQuestionIndex + 1} of {questions?.length}
-        </Typography>
-        <LinearProgress 
-          variant="determinate" 
-          value={((currentQuestionIndex + 1) / questions?.length) * 100} 
-          sx={{ mb: 2 }}
-        />
-      </Box>
-
-      {currentQuestion && (
-        <Paper elevation={3} sx={{ p: 3 }}>
-          {(() => {
-            if (!currentQuestion.question_text) {
-              return (
-                <Typography variant="h5" gutterBottom color="primary">
-                  Question {currentQuestionIndex + 1}
-                </Typography>
-              );
-            }
-
-            const parts = currentQuestion.question_text.split('\n\nContext:');
-            const question = parts[0] || '';
-            const context = parts[1] || '';
-            
-            return (
-              <>
-                <Typography variant="h5" gutterBottom color="primary" sx={{ mb: 2 }}>
-                  {question}
-                </Typography>
-                {context && (
-                  <Paper 
-                    elevation={0}
-                    sx={{ 
-                      mb: 3, 
-                      p: 2, 
-                      bgcolor: 'grey.50', 
-                      borderRadius: 1,
-                      border: '1px solid',
-                      borderColor: 'divider'
-                    }}
-                  >
-                    <Typography 
-                      variant="body1" 
-                      sx={{ 
-                        fontStyle: 'italic',
-                        color: 'text.secondary'
-                      }}
-                    >
-                      {context}
-                    </Typography>
-                  </Paper>
-                )}
-              </>
-            );
-          })()}
-          
-          <Typography variant="h6" gutterBottom color="primary" sx={{ mt: 2 }}>
-            Select the correct answer:
+    <Box sx={{ p: 3 }}>
+      {showResults ? (
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h5" gutterBottom>
+            Quiz Complete!
+          </Typography>
+          <Typography>
+            Your score: {score} out of {questions.length}
+          </Typography>
+          <Button
+            variant="contained"
+            onClick={() => navigate(`/chapters/${chapterId}`)}
+            sx={{ mt: 2 }}
+          >
+            Back to Chapter
+          </Button>
+        </Paper>
+      ) : (
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Question {currentQuestionIndex + 1} of {questions.length}
           </Typography>
           
+          <Typography variant="body1" paragraph>
+            {currentQuestion.question_text}
+          </Typography>
+
           <RadioGroup
-            value={selectedAnswers[currentQuestion.id] ?? ''}
-            onChange={(e) => handleAnswerSelect(currentQuestion.id, Number(e.target.value))}
+            value={selectedAnswers[currentQuestion.id] || ''}
+            onChange={(e) => handleAnswerSelect(currentQuestion.id, e.target.value)}
           >
-            <Stack spacing={2}>
-              {currentQuestion.options.map((option: string, index: number) => (
-                <FormControlLabel
-                  key={index}
-                  value={index}
-                  control={<Radio />}
-                  label={option}
-                  sx={{
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    p: 1,
-                    '&:hover': {
-                      backgroundColor: 'action.hover'
-                    }
-                  }}
-                />
-              ))}
-            </Stack>
+            {currentQuestion.options.map((option: string, index: number) => (
+              <FormControlLabel
+                key={index}
+                value={option}
+                control={<Radio />}
+                label={option}
+              />
+            ))}
           </RadioGroup>
 
-          <Box display="flex" justifyContent="space-between" mt={3}>
-            <Button
-              variant="outlined"
-              onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
-              disabled={currentQuestionIndex === 0}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="contained"
-              onClick={() => handleSubmit(currentQuestion.id)}
-              disabled={selectedAnswers[currentQuestion.id] === undefined || submitAnswer.isPending}
-            >
-              {currentQuestionIndex === questions.length - 1 ? 'Finish' : 'Next'}
-            </Button>
-          </Box>
-
-          {submitAnswer.data && (
+          {currentAnswerFeedback && (
             <Alert 
-              severity={submitAnswer.data.is_correct ? 'success' : 'error'} 
+              severity={currentAnswerFeedback.is_correct ? "success" : "error"}
               sx={{ mt: 2 }}
             >
-              {submitAnswer.data.is_correct ? 'Correct!' : 'Incorrect.'}
-              <br />
-              {submitAnswer.data.explanation}
+              {currentAnswerFeedback.explanation}
             </Alert>
           )}
+
+          <Box display="flex" justifyContent="space-between" alignItems="center" mt={3}>
+            <FormControl component="fieldset">
+              <FormGroup>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={showAnswer}
+                      onChange={(e) => setShowAnswer(e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label="Show Answer"
+                />
+              </FormGroup>
+            </FormControl>
+
+            <Box>
+              <Button
+                variant="outlined"
+                onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
+                disabled={currentQuestionIndex === 0}
+                sx={{ mr: 1 }}
+              >
+                Previous
+              </Button>
+              {currentAnswerFeedback ? (
+                <Button
+                  variant="contained"
+                  onClick={handleNext}
+                >
+                  {currentQuestionIndex === questions.length - 1 ? 'Finish' : 'Next'}
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  onClick={() => handleSubmit(currentQuestion.id)}
+                  disabled={!selectedAnswers[currentQuestion.id] || submitAnswer.isPending}
+                >
+                  Submit Answer
+                </Button>
+              )}
+            </Box>
+          </Box>
         </Paper>
       )}
     </Box>

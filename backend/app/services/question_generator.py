@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 import logging
 import random
 import re
@@ -16,7 +16,6 @@ class QuestionGenerator:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using device: {self.device}")
         
-        # Initialize only the embedding model (more reliable)
         try:
             self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
             logger.info("Successfully loaded SentenceTransformer model")
@@ -26,40 +25,68 @@ class QuestionGenerator:
 
     def generate_questions(self, chapter: Chapter, num_questions: int = 5) -> List[QuestionCreateSchema]:
         """
-        Generate questions for a given chapter using rule-based and template approaches.
+        Generate educational questions that help students understand the content.
         """
         logger.info(f"Generating {num_questions} questions for chapter {chapter.id}")
         
         try:
-            # Extract key information from the chapter
-            sentences = self._extract_sentences(chapter.content)
-            key_concepts = self._extract_key_concepts_simple(chapter.content)
-            important_sentences = self._extract_important_sentences(chapter.content)
-            
-            if not sentences:
-                logger.warning(f"No sentences extracted from chapter {chapter.id}")
+            # Extract and analyze content
+            logger.info(f"Analyzing content for chapter {chapter.id}")
+            content_analysis = self._analyze_content(chapter.content)
+            if not content_analysis:
+                logger.warning(f"Could not analyze content for chapter {chapter.id}")
                 return []
             
             questions = []
             
-            # Calculate distribution of question types
-            mcq_count = max(1, num_questions // 2)
-            tf_count = max(1, num_questions // 4)
-            short_answer_count = max(1, num_questions - mcq_count - tf_count)
+            # Generate different types of questions with specific counts
+            num_concept = num_questions // 3  # 1-2 concept questions
+            num_application = num_questions // 3  # 1-2 application questions
+            num_relationship = num_questions // 3  # 1-2 relationship questions
+            num_remaining = num_questions - (num_concept + num_application + num_relationship)
             
-            logger.info(f"Question distribution: MCQ={mcq_count}, T/F={tf_count}, Short={short_answer_count}")
+            # Generate concept questions
+            logger.info("Generating concept questions...")
+            concept_questions = self._generate_concept_questions(content_analysis, num_concept, chapter)
+            logger.info(f"Generated {len(concept_questions)} concept questions")
+            questions.extend(concept_questions)
             
-            # Generate different types of questions
-            mcqs = self._generate_mcqs_simple(important_sentences, key_concepts, mcq_count, chapter)
-            questions.extend(mcqs)
+            # Generate application questions
+            logger.info("Generating application questions...")
+            application_questions = self._generate_application_questions(content_analysis, num_application, chapter)
+            logger.info(f"Generated {len(application_questions)} application questions")
+            questions.extend(application_questions)
             
-            tf_questions = self._generate_true_false_simple(important_sentences, tf_count, chapter)
-            questions.extend(tf_questions)
+            # Generate relationship questions
+            logger.info("Generating relationship questions...")
+            relationship_questions = self._generate_relationship_questions(content_analysis, num_relationship, chapter)
+            logger.info(f"Generated {len(relationship_questions)} relationship questions")
+            questions.extend(relationship_questions)
             
-            short_answers = self._generate_short_answer_simple(important_sentences, short_answer_count, chapter)
-            questions.extend(short_answers)
+            # If we still don't have enough questions, generate from important sentences
+            if len(questions) < num_questions:
+                logger.info("Generating questions from important sentences...")
+                sentence_questions = self._generate_sentence_questions(
+                    content_analysis['important_sentences'],
+                    num_questions - len(questions),
+                    chapter
+                )
+                logger.info(f"Generated {len(sentence_questions)} questions from sentences")
+                questions.extend(sentence_questions)
+            
+            # Shuffle the questions to mix different types
+            random.shuffle(questions)
             
             logger.info(f"Successfully generated {len(questions)} questions for chapter {chapter.id}")
+            
+            # Log the generated questions for debugging
+            for i, q in enumerate(questions, 1):
+                logger.info(f"Question {i}:")
+                logger.info(f"  Text: {q.question_text}")
+                logger.info(f"  Type: {q.question_type}")
+                logger.info(f"  Options: {q.options}")
+                logger.info(f"  Correct Answer: {q.correct_answer}")
+            
             return questions
             
         except Exception as e:
@@ -72,271 +99,544 @@ class QuestionGenerator:
             return []
         
         # Split by periods, exclamation marks, and question marks
+        # Also handle common abbreviations to avoid false splits
+        abbreviations = ['e.g.', 'i.e.', 'etc.', 'vs.', 'Dr.', 'Mr.', 'Mrs.', 'Ms.', 'Prof.', 'Ph.D.']
+        for abbr in abbreviations:
+            text = text.replace(abbr, abbr.replace('.', '@'))
+        
         sentences = re.split(r'[.!?]+', text)
         
         # Clean and filter sentences
         cleaned_sentences = []
         for sentence in sentences:
+            # Restore abbreviations
+            for abbr in abbreviations:
+                sentence = sentence.replace(abbr.replace('.', '@'), abbr)
+            
             sentence = sentence.strip()
+            
             # Filter out very short sentences, page numbers, headers, etc.
             if (len(sentence) > 20 and 
                 not sentence.isdigit() and 
                 not re.match(r'^(page|chapter|section)\s*\d+', sentence.lower()) and
-                len(sentence.split()) >= 4):
+                len(sentence.split()) >= 4 and
+                not re.match(r'^\d+\.\s*$', sentence) and  # Filter out numbered list markers
+                not re.match(r'^[A-Z]\.\s*$', sentence)):  # Filter out lettered list markers
                 cleaned_sentences.append(sentence)
         
         return cleaned_sentences[:50]  # Limit to first 50 sentences
 
-    def _extract_key_concepts_simple(self, text: str) -> List[str]:
-        """Extract key concepts using simple word frequency analysis."""
-        if not text:
-            return []
+    def _analyze_content(self, content: str) -> Dict[str, Any]:
+        """Analyze the content to identify key concepts, relationships, and learning points."""
+        if not content:
+            logger.warning("Empty content provided for analysis")
+            return {}
         
-        # Convert to lowercase and extract words
-        words = re.findall(r'\b[a-zA-Z]{4,}\b', text.lower())
+        # Split into sections
+        sections = self._split_into_sections(content)
+        logger.info(f"Split content into {len(sections)} sections")
         
-        # Common stop words
-        stop_words = {
-            'this', 'that', 'with', 'have', 'will', 'from', 'they', 'know',
-            'want', 'been', 'good', 'much', 'some', 'time', 'very', 'when',
-            'come', 'here', 'just', 'like', 'long', 'make', 'many', 'over',
-            'such', 'take', 'than', 'them', 'well', 'were', 'what', 'your',
-            'also', 'back', 'call', 'came', 'each', 'even', 'find', 'first',
-            'give', 'hand', 'high', 'keep', 'last', 'left', 'life', 'live',
-            'look', 'made', 'most', 'move', 'must', 'name', 'need', 'never',
-            'only', 'open', 'part', 'place', 'right', 'said', 'same', 'seem',
-            'show', 'small', 'tell', 'turn', 'used', 'want', 'ways', 'work',
-            'world', 'year', 'years', 'young', 'chapter', 'page', 'section'
+        analysis = {
+            'sections': [],
+            'key_concepts': set(),
+            'relationships': [],
+            'examples': [],
+            'definitions': [],
+            'procedures': [],
+            'important_sentences': []  # Add this to store important sentences
         }
         
-        # Count word frequencies
-        word_freq = {}
-        for word in words:
-            if word not in stop_words and len(word) > 3:
-                word_freq[word] = word_freq.get(word, 0) + 1
+        for i, section in enumerate(sections, 1):
+            logger.info(f"Analyzing section {i}/{len(sections)}")
+            section_analysis = self._analyze_section(section)
+            analysis['sections'].append(section_analysis)
+            
+            # Aggregate key concepts
+            analysis['key_concepts'].update(section_analysis['key_concepts'])
+            
+            # Collect relationships, examples, definitions, and procedures
+            analysis['relationships'].extend(section_analysis['relationships'])
+            analysis['examples'].extend(section_analysis['examples'])
+            analysis['definitions'].extend(section_analysis['definitions'])
+            analysis['procedures'].extend(section_analysis['procedures'])
+            
+            # Add important sentences from this section
+            analysis['important_sentences'].extend(section_analysis['important_sentences'])
         
-        # Get top concepts
-        sorted_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)
-        key_concepts = [word for word, freq in sorted_words[:15] if freq > 1]
+        # Log analysis results
+        logger.info(f"Analysis complete. Found:")
+        logger.info(f"- {len(analysis['key_concepts'])} key concepts")
+        logger.info(f"- {len(analysis['relationships'])} relationships")
+        logger.info(f"- {len(analysis['examples'])} examples")
+        logger.info(f"- {len(analysis['definitions'])} definitions")
+        logger.info(f"- {len(analysis['procedures'])} procedures")
+        logger.info(f"- {len(analysis['important_sentences'])} important sentences")
         
-        logger.debug(f"Extracted key concepts: {key_concepts[:5]}")
-        return key_concepts
+        return analysis
 
-    def _extract_important_sentences(self, text: str) -> List[str]:
-        """Extract important sentences using keyword density and position."""
-        sentences = self._extract_sentences(text)
-        if not sentences:
-            return []
+    def _split_into_sections(self, content: str) -> List[str]:
+        """Split content into meaningful sections."""
+        # Split by headers, paragraphs, or other natural breaks
+        sections = re.split(r'\n\s*\n|\n(?=\d+\.|\w+\.)', content)
+        return [s.strip() for s in sections if s.strip()]
+
+    def _analyze_section(self, section: str) -> Dict[str, Any]:
+        """Analyze a section to identify its key components."""
+        sentences = self._extract_sentences(section)
+        logger.info(f"Extracted {len(sentences)} sentences from section")
         
-        key_concepts = self._extract_key_concepts_simple(text)
+        analysis = {
+            'key_concepts': set(),
+            'relationships': [],
+            'examples': [],
+            'definitions': [],
+            'procedures': [],
+            'important_sentences': []  # Add this to store important sentences
+        }
         
-        # Score sentences based on keyword density
-        scored_sentences = []
         for sentence in sentences:
-            score = 0
-            sentence_lower = sentence.lower()
+            # Identify definitions
+            if re.search(r'\b(is|are|refers to|means|defined as|consists of|comprises|contains)\b', sentence, re.IGNORECASE):
+                analysis['definitions'].append(sentence)
+                analysis['important_sentences'].append(sentence)
             
-            # Count key concepts in sentence
-            for concept in key_concepts[:10]:  # Use top 10 concepts
-                if concept in sentence_lower:
-                    score += 1
+            # Identify examples
+            if re.search(r'\b(for example|such as|like|including|e\.g\.|i\.e\.|specifically|notably)\b', sentence, re.IGNORECASE):
+                analysis['examples'].append(sentence)
+                analysis['important_sentences'].append(sentence)
             
-            # Bonus for sentences at the beginning (often contain main ideas)
-            if sentences.index(sentence) < len(sentences) * 0.3:
-                score += 0.5
+            # Identify procedures
+            if re.search(r'\b(first|then|next|finally|step|process|procedure|method|approach|technique)\b', sentence, re.IGNORECASE):
+                analysis['procedures'].append(sentence)
+                analysis['important_sentences'].append(sentence)
             
-            # Bonus for longer sentences (often more informative)
-            if len(sentence.split()) > 15:
-                score += 0.3
+            # Extract key concepts
+            concepts = self._extract_key_concepts(sentence)
+            analysis['key_concepts'].update(concepts)
             
-            scored_sentences.append((sentence, score))
+            # Identify relationships
+            relationships = self._extract_relationships(sentence)
+            if relationships:
+                analysis['relationships'].extend(relationships)
+                analysis['important_sentences'].append(sentence)
+            
+            # Add sentences that contain key technical terms
+            if any(concept in sentence for concept in concepts):
+                analysis['important_sentences'].append(sentence)
         
-        # Sort by score and return top sentences
-        scored_sentences.sort(key=lambda x: x[1], reverse=True)
-        important_sentences = [s[0] for s in scored_sentences[:15]]
-        
-        logger.debug(f"Extracted {len(important_sentences)} important sentences")
-        return important_sentences
+        return analysis
 
-    def _generate_mcqs_simple(self, sentences: List[str], key_concepts: List[str], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
-        """Generate MCQs using template-based approach."""
-        logger.info(f"Generating {count} MCQs using template approach")
+    def _extract_key_concepts(self, sentence: str) -> List[str]:
+        """Extract key concepts from a sentence."""
+        concepts = []
+        
+        # Technical terms (words that appear in technical contexts)
+        tech_terms = re.findall(r'\b[A-Z][a-z]+(?:[A-Z][a-z]+)*\b', sentence)
+        concepts.extend(tech_terms)
+        
+        # Important phrases (after key indicators)
+        indicators = [
+            'called', 'known as', 'referred to as', 'defined as',
+            'consists of', 'comprises', 'contains', 'includes',
+            'is a', 'are a', 'is an', 'are an',
+            'refers to', 'means', 'represents'
+        ]
+        
+        for indicator in indicators:
+            if indicator in sentence.lower():
+                # Extract the phrase after the indicator
+                parts = sentence.lower().split(indicator)
+                if len(parts) > 1:
+                    phrase = parts[1].split('.')[0].strip()
+                    if len(phrase.split()) <= 5:  # Limit phrase length
+                        concepts.append(phrase)
+        
+        # Add any technical terms found in the sentence
+        technical_terms = [
+            'function', 'method', 'class', 'object', 'variable',
+            'parameter', 'argument', 'return', 'type', 'interface',
+            'module', 'package', 'library', 'framework', 'algorithm',
+            'data structure', 'database', 'query', 'index', 'key',
+            'value', 'array', 'list', 'dictionary', 'map', 'set',
+            'tree', 'graph', 'node', 'edge', 'vertex', 'path'
+        ]
+        
+        for term in technical_terms:
+            if term in sentence.lower():
+                concepts.append(term)
+        
+        return list(set(concepts))  # Remove duplicates
+
+    def _extract_relationships(self, sentence: str) -> List[Tuple[str, str, str]]:
+        """Extract relationships between concepts."""
+        relationships = []
+        
+        # Look for relationship indicators
+        indicators = {
+            'is_a': ['is a', 'are a', 'is an', 'are an'],
+            'has_a': ['has a', 'have a', 'contains', 'includes'],
+            'can': ['can', 'could', 'may', 'might'],
+            'requires': ['requires', 'needs', 'must have'],
+            'leads_to': ['leads to', 'results in', 'causes', 'creates']
+        }
+        
+        for rel_type, rel_indicators in indicators.items():
+            for indicator in rel_indicators:
+                if indicator in sentence.lower():
+                    # Extract the concepts before and after the indicator
+                    parts = sentence.lower().split(indicator)
+                    if len(parts) > 1:
+                        concept1 = parts[0].split()[-1]  # Last word before indicator
+                        concept2 = parts[1].split('.')[0].strip().split()[0]  # First word after indicator
+                        relationships.append((concept1, rel_type, concept2))
+        
+        return relationships
+
+    def _generate_relationship_questions(self, analysis: Dict[str, Any], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
+        """Generate questions that test understanding of relationships between concepts."""
         questions = []
         
-        question_templates = [
-            "What is the main concept discussed in the following context?",
-            "According to the text, which statement is most accurate?",
-            "What does the passage primarily focus on?",
-            "Which of the following best describes the key idea?",
-            "What is the central theme of this section?"
-        ]
-        
-        for i in range(min(count, len(sentences))):
-            try:
-                sentence = sentences[i]
-                
-                # Extract key terms from the sentence
-                sentence_words = re.findall(r'\b[a-zA-Z]{4,}\b', sentence.lower())
-                relevant_concepts = [c for c in key_concepts if c in sentence.lower()]
-                
-                if not relevant_concepts:
-                    continue
-                
-                # Create question
-                question_text = random.choice(question_templates)
-                
-                # Create options
-                correct_concept = relevant_concepts[0]
-                options = [correct_concept.title()]
-                
-                # Add distractors
-                other_concepts = [c for c in key_concepts if c != correct_concept]
-                distractors = random.sample(other_concepts, min(3, len(other_concepts)))
-                
-                if len(distractors) < 3:
-                    # Fill with generic distractors
-                    generic_distractors = ["Data analysis", "Research methodology", "Statistical analysis", "Information processing", "System design"]
-                    needed = 3 - len(distractors)
-                    distractors.extend(random.sample(generic_distractors, min(needed, len(generic_distractors))))
-                
-                options.extend([d.title() for d in distractors[:3]])
-                random.shuffle(options)
-                
-                # Find correct answer index
-                correct_answer = chr(65 + options.index(correct_concept.title()))  # A, B, C, D
-                
-                question = QuestionCreateSchema(
-                    question_text=f"{question_text}\n\nContext: {sentence[:200]}{'...' if len(sentence) > 200 else ''}",
-                    question_type="multiple_choice",
-                    options=options,
-                    correct_answer=correct_answer,
-                    difficulty="medium",
-                    chapter_id=chapter.id
-                )
-                questions.append(question)
-                logger.info(f"Generated MCQ {i+1}: {question_text}")
-                
-            except Exception as e:
-                logger.error(f"Error generating MCQ {i+1}: {str(e)}")
-                continue
-        
-        return questions
-
-    def _generate_true_false_simple(self, sentences: List[str], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
-        """Generate True/False questions using template approach."""
-        logger.info(f"Generating {count} True/False questions using template approach")
-        questions = []
-        
-        tf_templates = [
-            "The following statement is accurate based on the text:",
-            "According to the passage, this statement is true:",
-            "The text supports the following claim:",
-            "Based on the content, this statement is correct:"
-        ]
-        
-        for i in range(min(count, len(sentences))):
-            try:
-                sentence = sentences[i]
-                
-                # Create a true statement from the sentence
-                template = random.choice(tf_templates)
-                
-                # Simplify the sentence for the statement
-                simplified = sentence[:150] + ('...' if len(sentence) > 150 else '')
-                
-                # Randomly decide if this should be true or false
-                is_true = random.choice([True, False])
-                
-                if is_true:
-                    statement = simplified
-                    correct_answer = "True"
-                else:
-                    # Create a false statement by modifying the original
-                    statement = self._create_false_statement(simplified)
-                    correct_answer = "False"
-                
-                question = QuestionCreateSchema(
-                    question_text=f"{template}\n\n'{statement}'",
-                    question_type="true_false",
-                    options=["True", "False"],
-                    correct_answer=correct_answer,
-                    difficulty="medium",
-                    chapter_id=chapter.id
-                )
-                questions.append(question)
-                logger.info(f"Generated T/F question {i+1}")
-                
-            except Exception as e:
-                logger.error(f"Error generating T/F question {i+1}: {str(e)}")
-                continue
-        
-        return questions
-
-    def _create_false_statement(self, statement: str) -> str:
-        """Create a false statement by modifying the original."""
-        # Simple modifications to make statements false
-        modifications = [
-            (r'\bnot\b', ''),  # Remove 'not'
-            (r'\bis\b', 'is not'),  # Change 'is' to 'is not'
-            (r'\bare\b', 'are not'),  # Change 'are' to 'are not'
-            (r'\bcan\b', 'cannot'),  # Change 'can' to 'cannot'
-            (r'\bwill\b', 'will not'),  # Change 'will' to 'will not'
-        ]
-        
-        modified = statement
-        for pattern, replacement in modifications:
-            if re.search(pattern, statement, re.IGNORECASE):
-                modified = re.sub(pattern, replacement, statement, count=1, flags=re.IGNORECASE)
+        # Generate questions from relationships
+        for relationship in analysis['relationships']:
+            if len(questions) >= count:
                 break
-        
-        # If no modification was made, add a negation
-        if modified == statement:
-            modified = f"It is not true that {statement.lower()}"
-        
-        return modified
-
-    def _generate_short_answer_simple(self, sentences: List[str], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
-        """Generate short answer questions using template approach."""
-        logger.info(f"Generating {count} Short Answer questions using template approach")
-        questions = []
-        
-        sa_templates = [
-            "What is the key concept mentioned in this context?",
-            "What is the main topic being discussed?",
-            "What is the primary focus of this section?",
-            "What concept is being explained here?",
-            "What is the central idea presented?"
-        ]
-        
-        for i in range(min(count, len(sentences))):
-            try:
-                sentence = sentences[i]
-                
-                # Extract a key concept as the answer
-                sentence_words = re.findall(r'\b[A-Z][a-z]+\b', sentence)  # Capitalized words
-                if not sentence_words:
-                    sentence_words = re.findall(r'\b[a-z]{4,}\b', sentence.lower())
-                
-                if not sentence_words:
-                    continue
-                
-                # Choose the most relevant word as answer
-                answer = sentence_words[0] if sentence_words else "concept"
-                question_text = random.choice(sa_templates)
-                
-                question = QuestionCreateSchema(
-                    question_text=f"{question_text}\n\nContext: {sentence[:200]}{'...' if len(sentence) > 200 else ''}",
-                    question_type="short_answer",
-                    options=[],
-                    correct_answer=answer.title(),
-                    difficulty="medium",
-                    chapter_id=chapter.id
-                )
-                questions.append(question)
-                logger.info(f"Generated Short Answer question {i+1}")
-                
-            except Exception as e:
-                logger.error(f"Error generating Short Answer question {i+1}: {str(e)}")
+            
+            concept1, rel_type, concept2 = relationship
+            
+            # Create different types of relationship questions
+            question_patterns = [
+                f"What is the relationship between {concept1} and {concept2}?",
+                f"How does {concept1} affect {concept2}?",
+                f"Which statement best describes the relationship between {concept1} and {concept2}?",
+                f"What happens to {concept2} when {concept1} changes?",
+                f"Which of the following best explains how {concept1} and {concept2} are related?"
+            ]
+            
+            question_text = random.choice(question_patterns)
+            
+            # Create options based on the relationship and related concepts
+            correct_option = f"{concept1} {rel_type} {concept2}"
+            other_options = self._generate_relationship_options(concept1, concept2, rel_type, analysis)
+            
+            if not other_options:
                 continue
+            
+            options = [correct_option] + other_options[:3]
+            random.shuffle(options)
+            
+            # Store the correct answer as a letter (A, B, C, D)
+            correct_answer = chr(65 + options.index(correct_option))
+            
+            question = QuestionCreateSchema(
+                question_text=question_text,
+                question_type="multiple_choice",
+                options=options,
+                correct_answer=correct_answer,
+                difficulty="medium",
+                chapter_id=chapter.id
+            )
+            questions.append(question)
         
         return questions
+
+    def _generate_relationship_options(self, concept1: str, concept2: str, rel_type: str, analysis: Dict[str, Any]) -> List[str]:
+        """Generate plausible but incorrect relationship options."""
+        options = []
+        
+        # Get other relationships from the analysis
+        other_relationships = [(c1, r, c2) for c1, r, c2 in analysis['relationships'] 
+                              if (c1, r, c2) != (concept1, rel_type, concept2)]
+        
+        # Create options by combining concepts with different relationship types
+        relationship_types = {
+            'is_a': ['is a type of', 'is a kind of', 'is a form of'],
+            'has_a': ['has a', 'contains', 'includes'],
+            'can': ['can', 'is able to', 'has the ability to'],
+            'requires': ['requires', 'needs', 'depends on'],
+            'leads_to': ['leads to', 'results in', 'causes']
+        }
+        
+        # Add options from other relationships
+        for c1, r, c2 in other_relationships:
+            option = f"{c1} {r} {c2}"
+            options.append(option)
+        
+        # Add variations of the original relationship
+        for rel_type, variations in relationship_types.items():
+            for variation in variations:
+                if variation != rel_type:
+                    option = f"{concept1} {variation} {concept2}"
+                    options.append(option)
+        
+        return options
+
+    def _generate_concept_questions(self, analysis: Dict[str, Any], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
+        """Generate questions that test understanding of key concepts."""
+        questions = []
+        
+        # Generate questions from definitions
+        for definition in analysis['definitions']:
+            if len(questions) >= count:
+                break
+                
+            # Extract the concept being defined
+            concept = self._extract_defined_concept(definition)
+            if not concept:
+                logger.debug(f"Could not extract concept from definition: {definition}")
+                continue
+            
+            logger.info(f"Generating question for concept: {concept}")
+            
+            # Create different types of concept questions
+            question_patterns = [
+                f"What is the definition of {concept}?",
+                f"Which of the following best describes {concept}?",
+                f"What does {concept} refer to?",
+                f"Which statement correctly defines {concept}?",
+                f"What is the meaning of {concept} in this context?"
+            ]
+            
+            question_text = random.choice(question_patterns)
+            
+            # Create options based on the definition and related concepts
+            correct_option = re.sub(r'^\d+\s+', '', definition)  # Remove any prepended numbers
+            other_options = self._generate_definition_options(concept, analysis)
+            
+            if not other_options:
+                logger.warning(f"Could not generate enough options for concept: {concept}")
+                continue
+            
+            options = [correct_option] + other_options[:3]
+            random.shuffle(options)
+            
+            # Store the correct answer as a letter (A, B, C, D)
+            correct_answer = chr(65 + options.index(correct_option))
+            
+            question = QuestionCreateSchema(
+                question_text=question_text,
+                question_type="multiple_choice",
+                options=options,
+                correct_answer=correct_answer,
+                difficulty="medium",
+                chapter_id=chapter.id
+            )
+            questions.append(question)
+            logger.info(f"Generated question for concept {concept}")
+        
+        return questions
+
+    def _generate_application_questions(self, analysis: Dict[str, Any], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
+        """Generate questions that test application of concepts."""
+        questions = []
+        
+        # Generate questions from examples and procedures
+        for example in analysis['examples']:
+            if len(questions) >= count:
+                break
+            
+            # Create a question about applying the concept
+            concept = self._extract_concept_from_example(example)
+            if not concept:
+                logger.debug(f"Could not extract concept from example: {example}")
+                continue
+            
+            logger.info(f"Generating application question for concept: {concept}")
+            
+            # Create different types of application questions
+            question_patterns = [
+                f"Which of the following is an example of {concept}?",
+                f"Which scenario best demonstrates {concept}?",
+                f"In which situation would {concept} be most applicable?",
+                f"Which of the following represents a correct application of {concept}?",
+                f"Which case study best illustrates the use of {concept}?"
+            ]
+            
+            question_text = random.choice(question_patterns)
+            
+            # Create options based on the example and related concepts
+            correct_option = re.sub(r'^\d+\s+', '', example)  # Remove any prepended numbers
+            other_options = self._generate_example_options(concept, analysis)
+            
+            if not other_options:
+                logger.warning(f"Could not generate enough options for concept: {concept}")
+                continue
+            
+            options = [correct_option] + other_options[:3]
+            random.shuffle(options)
+            
+            # Store the correct answer as a letter (A, B, C, D)
+            correct_answer = chr(65 + options.index(correct_option))
+            
+            question = QuestionCreateSchema(
+                question_text=question_text,
+                question_type="multiple_choice",
+                options=options,
+                correct_answer=correct_answer,
+                difficulty="medium",
+                chapter_id=chapter.id
+            )
+            questions.append(question)
+            logger.info(f"Generated application question for concept {concept}")
+        
+        return questions
+
+    def _extract_defined_concept(self, definition: str) -> str:
+        """Extract the concept being defined from a definition sentence."""
+        # Look for patterns like "X is defined as..." or "X refers to..."
+        patterns = [
+            r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:is|are)\s+(?:defined as|refers to)',
+            r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:is|are)\s+(?:a|an)',
+            r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:means|refers to)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, definition)
+            if match:
+                return match.group(1)
+        
+        return ""
+
+    def _generate_definition_options(self, concept: str, analysis: Dict[str, Any]) -> List[str]:
+        """Generate plausible but incorrect definition options."""
+        options = []
+        
+        # Get other definitions from the analysis
+        other_definitions = [d for d in analysis['definitions'] if concept not in d]
+        
+        # Get related concepts
+        related_concepts = [c for c in analysis['key_concepts'] if c != concept]
+        
+        # Create options by combining related concepts with definition patterns
+        definition_patterns = [
+            f"{concept} is a type of {related_concept}",
+            f"{concept} refers to the process of {related_concept}",
+            f"{concept} is used to {related_concept}",
+            f"{concept} is part of {related_concept}",
+            f"{concept} is related to {related_concept}"
+        ]
+        
+        for pattern in definition_patterns:
+            for related_concept in related_concepts:
+                option = pattern.format(concept=concept, related_concept=related_concept)
+                # Remove any prepended numbers
+                option = re.sub(r'^\d+\s+', '', option)
+                options.append(option)
+        
+        return options
+
+    def _extract_concept_from_example(self, example: str) -> str:
+        """Extract the concept being exemplified from an example sentence."""
+        # Look for patterns like "For example, X..." or "X such as..."
+        patterns = [
+            r'For example,\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+            r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+such as',
+            r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+including'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, example)
+            if match:
+                return match.group(1)
+        
+        return ""
+
+    def _generate_example_options(self, concept: str, analysis: Dict[str, Any]) -> List[str]:
+        """Generate plausible but incorrect example options."""
+        options = []
+        
+        # Get other examples from the analysis
+        other_examples = [e for e in analysis['examples'] if concept not in e]
+        
+        # Get related concepts
+        related_concepts = [c for c in analysis['key_concepts'] if c != concept]
+        
+        # Create options by combining related concepts with example patterns
+        example_patterns = [
+            f"An example of {concept} is {related_concept}",
+            f"{concept} can be seen in {related_concept}",
+            f"{concept} is demonstrated by {related_concept}",
+            f"{concept} is illustrated by {related_concept}",
+            f"{concept} is shown in {related_concept}"
+        ]
+        
+        for pattern in example_patterns:
+            for related_concept in related_concepts:
+                option = pattern.format(concept=concept, related_concept=related_concept)
+                # Remove any prepended numbers
+                option = re.sub(r'^\d+\s+', '', option)
+                options.append(option)
+        
+        return options
+
+    def _generate_sentence_questions(self, sentences: List[str], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
+        """Generate questions from important sentences."""
+        questions = []
+        
+        for sentence in sentences:
+            if len(questions) >= count:
+                break
+            
+            # Create a question about the sentence
+            question_text = f"Which of the following statements is true about the content?"
+            
+            # Create options based on the sentence and its variations
+            correct_option = re.sub(r'^\d+\s+', '', sentence)  # Remove any prepended numbers
+            other_options = self._generate_sentence_options(sentence, sentences)
+            
+            if not other_options:
+                continue
+            
+            options = [correct_option] + other_options[:3]
+            random.shuffle(options)
+            
+            # Store the correct answer as a letter (A, B, C, D)
+            correct_answer = chr(65 + options.index(correct_option))
+            
+            question = QuestionCreateSchema(
+                question_text=question_text,
+                question_type="multiple_choice",
+                options=options,
+                correct_answer=correct_answer,
+                difficulty="medium",
+                chapter_id=chapter.id
+            )
+            questions.append(question)
+        
+        return questions
+
+    def _generate_sentence_options(self, sentence: str, all_sentences: List[str]) -> List[str]:
+        """Generate plausible but incorrect options for a sentence-based question."""
+        options = []
+        
+        # Get other sentences as potential options
+        other_sentences = [s for s in all_sentences if s != sentence]
+        
+        # Create variations of the original sentence
+        variations = [
+            sentence.replace("is", "is not"),
+            sentence.replace("are", "are not"),
+            sentence.replace("can", "cannot"),
+            sentence.replace("will", "will not"),
+            sentence.replace("should", "should not"),
+            sentence.replace("must", "must not"),
+            sentence.replace("always", "never"),
+            sentence.replace("never", "always"),
+            sentence.replace("all", "none"),
+            sentence.replace("none", "all")
+        ]
+        
+        # Add variations that make sense
+        for variation in variations:
+            if variation != sentence and len(variation.split()) > 3:
+                # Remove any prepended numbers
+                variation = re.sub(r'^\d+\s+', '', variation)
+                options.append(variation)
+        
+        # Add other sentences that are different enough
+        for other in other_sentences:
+            if len(other.split()) > 3 and other not in options:
+                # Remove any prepended numbers
+                other = re.sub(r'^\d+\s+', '', other)
+                options.append(other)
+        
+        return options[:3]  # Return at most 3 options

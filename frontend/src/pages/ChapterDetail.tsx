@@ -10,11 +10,16 @@ import {
   CircularProgress,
   Button,
   Alert,
+  Stack,
+  Collapse
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
   PictureAsPdf as PdfIcon,
   Quiz as QuizIcon,
+  Add as AddIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon
 } from '@mui/icons-material';
 import { api } from '../services/api';
 
@@ -26,6 +31,8 @@ interface Chapter {
   summary: string;
   keywords: string;
   upload_id: number;
+  has_questions: boolean;
+  question_count?: number;
 }
 
 const ChapterDetail: React.FC = () => {
@@ -36,6 +43,8 @@ const ChapterDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [generatingQuestions, setGeneratingQuestions] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationLogs, setGenerationLogs] = useState<string[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
 
   useEffect(() => {
     console.log('ChapterDetail mounted with chapterId:', chapterId);
@@ -55,11 +64,19 @@ const ChapterDetail: React.FC = () => {
       setLoading(true);
       setError(null);
       
+      // Fetch chapter details
       console.log('Making API request to:', `/chapters/${chapterId}`);
-      const response = await api.get(`/chapters/${chapterId}`);
-      console.log('API response received:', response.data);
+      const chapterResponse = await api.get(`/chapters/${chapterId}`);
+      console.log('API response received:', chapterResponse.data);
       
-      setChapter(response.data);
+      // Fetch question count
+      const questionsResponse = await api.get(`/chapters/${chapterId}/questions`);
+      const questionCount = questionsResponse.data.length;
+      
+      setChapter({
+        ...chapterResponse.data,
+        question_count: questionCount
+      });
     } catch (err: any) {
       console.error('Error fetching chapter:', {
         error: err,
@@ -91,18 +108,37 @@ const ChapterDetail: React.FC = () => {
     try {
       setGeneratingQuestions(true);
       setGenerationError(null);
+      setGenerationLogs([]);
+      setShowLogs(true);
+      
+      // Add initial log
+      setGenerationLogs(prev => [...prev, 'Starting question generation process...']);
       
       // Generate questions
-      await api.post(`/chapters/${chapterId}/generate-questions?num_questions=5`);
+      const response = await api.post(`/chapters/${chapterId}/generate-questions?num_questions=5`);
       
-      // Navigate to quiz page
-      navigate(`/quiz/${chapterId}`);
+      // Add success log
+      setGenerationLogs(prev => [...prev, 'Question generation completed successfully!']);
+      
+      // Refresh chapter data to update has_questions status
+      await fetchChapter();
     } catch (err: any) {
       setGenerationError(err.response?.data?.detail || 'Failed to generate questions');
+      setGenerationLogs(prev => [...prev, `Error: ${err.response?.data?.detail || 'Failed to generate questions'}`]);
       console.error('Error generating questions:', err);
     } finally {
       setGeneratingQuestions(false);
     }
+  };
+
+  const handleStartQuiz = () => {
+    if (chapter) {
+      navigate(`/quiz/${chapterId}`);
+    }
+  };
+
+  const toggleLogs = () => {
+    setShowLogs(!showLogs);
   };
 
   if (loading) {
@@ -153,7 +189,7 @@ const ChapterDetail: React.FC = () => {
           ))}
         </Box>
 
-        <Box display="flex" gap={2}>
+        <Stack direction="row" spacing={2}>
           <Button
             variant="contained"
             color="secondary"
@@ -166,18 +202,70 @@ const ChapterDetail: React.FC = () => {
           <Button
             variant="contained"
             color="primary"
-            startIcon={<QuizIcon />}
+            startIcon={<AddIcon />}
             onClick={handleGenerateQuestions}
             disabled={generatingQuestions}
           >
-            {generatingQuestions ? 'Generating Questions...' : 'Take Quiz'}
+            {generatingQuestions ? 'Generating Questions...' : 'Generate Questions'}
           </Button>
-        </Box>
+
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<QuizIcon />}
+            onClick={handleStartQuiz}
+            disabled={!chapter.question_count || chapter.question_count === 0}
+          >
+            Take Quiz {chapter.question_count ? `(${chapter.question_count} questions)` : ''}
+          </Button>
+        </Stack>
 
         {generationError && (
           <Alert severity="error" sx={{ mt: 2 }}>
             {generationError}
           </Alert>
+        )}
+
+        {generationLogs.length > 0 && (
+          <Box sx={{ mt: 2 }}>
+            <Button
+              onClick={toggleLogs}
+              endIcon={showLogs ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              size="small"
+            >
+              {showLogs ? 'Hide Generation Logs' : 'Show Generation Logs'}
+            </Button>
+            <Collapse in={showLogs}>
+              <Paper 
+                variant="outlined" 
+                sx={{ 
+                  mt: 1, 
+                  p: 2, 
+                  maxHeight: '300px', 
+                  overflow: 'auto',
+                  backgroundColor: '#f5f5f5'
+                }}
+              >
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Generation Process Logs:
+                </Typography>
+                {generationLogs.map((log, index) => (
+                  <Typography 
+                    key={index} 
+                    variant="body2" 
+                    component="div" 
+                    sx={{ 
+                      fontFamily: 'monospace',
+                      whiteSpace: 'pre-wrap',
+                      mb: 0.5
+                    }}
+                  >
+                    {log}
+                  </Typography>
+                ))}
+              </Paper>
+            </Collapse>
+          </Box>
         )}
       </Paper>
 

@@ -28,6 +28,7 @@ venv2/
 .env
 .venv
 .venv2
+.env
 
 # IDE
 .idea/
