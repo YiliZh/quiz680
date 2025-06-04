@@ -8,6 +8,8 @@ import { api } from '../services/api'
 import { Upload } from '../types'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import { format } from 'date-fns'
 
 // Type guard to check if an object has processing_logs
 function hasProcessingLogs(obj: any): obj is Upload & { processing_logs: string } {
@@ -185,16 +187,28 @@ export default function UploadPage() {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box>
                   <Typography variant="h6">{upload.title}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Uploaded: {format(new Date(upload.created_at), 'MMM d, yyyy HH:mm')}
+                  </Typography>
                   <Typography>Status: {upload.status}</Typography>
                   {upload.description && (
                     <Typography>Description: {upload.description}</Typography>
                   )}
                 </Box>
-                {upload.status === 'processing' && (
-                  <IconButton onClick={() => toggleUploadExpansion(upload.id)}>
-                    {expandedUploads.has(upload.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <IconButton 
+                    onClick={() => navigate(`/uploads/${upload.id}`)}
+                    color="primary"
+                    title="View Details"
+                  >
+                    <VisibilityIcon />
                   </IconButton>
-                )}
+                  {upload.status === 'processing' && (
+                    <IconButton onClick={() => toggleUploadExpansion(upload.id)}>
+                      {expandedUploads.has(upload.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                    </IconButton>
+                  )}
+                </Box>
               </Box>
               <Collapse in={expandedUploads.has(upload.id)}>
                 {upload.processing_logs !== null && (

@@ -176,14 +176,19 @@ def get_uploads(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get all uploads for current user"""
+    """Get all uploads for the current user"""
     logger.info(f"Fetching uploads for user {current_user.id}")
+    
     try:
-        uploads = db.query(UploadModel).filter(UploadModel.user_id == current_user.id).all()
-        logger.info(f"Found {len(uploads)} uploads for user {current_user.id}")
+        uploads = db.query(UploadModel).filter(
+            UploadModel.user_id == current_user.id
+        ).order_by(UploadModel.created_at.desc()).all()
+        
+        logger.info(f"Successfully fetched {len(uploads)} uploads for user {current_user.id}")
         return uploads
+        
     except Exception as e:
-        logger.error(f"Error fetching uploads: {str(e)}", exc_info=True)
+        logger.error(f"Error fetching uploads for user {current_user.id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error fetching uploads"
