@@ -162,15 +162,30 @@ async def generate_questions(
                 detail="Chapter not found"
             )
         
+        logger.info(f"Found chapter {chapter_id} for user {current_user.id}")
+        
         # Initialize question generator
         generator = QuestionGenerator()
         
         # Generate questions
         questions = generator.generate_questions(chapter, num_questions)
+        logger.info(f"Generated {len(questions)} questions")
+        
+        if not questions:
+            logger.warning("No questions were generated")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate questions"
+            )
         
         # Save questions to database
         db_questions = []
-        for question in questions:
+        for i, question in enumerate(questions, 1):
+            logger.info(f"Saving question {i}/{len(questions)}")
+            logger.info(f"Question text: {question.question_text}")
+            logger.info(f"Options: {question.options}")
+            logger.info(f"Correct answer: {question.correct_answer}")
+            
             db_question = Question(
                 question_text=question.question_text,
                 question_type=question.question_type,
@@ -185,7 +200,17 @@ async def generate_questions(
         # Update chapter's has_questions field
         chapter.has_questions = True
         
-        db.commit()
+        try:
+            logger.info("Committing changes to database...")
+            db.commit()
+            logger.info("Successfully committed changes to database")
+        except Exception as e:
+            logger.error(f"Error committing to database: {str(e)}", exc_info=True)
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error saving questions to database"
+            )
         
         # Refresh questions to get their IDs
         for question in db_questions:
