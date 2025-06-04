@@ -182,6 +182,9 @@ async def generate_questions(
             db.add(db_question)
             db_questions.append(db_question)
         
+        # Update chapter's has_questions field
+        chapter.has_questions = True
+        
         db.commit()
         
         # Refresh questions to get their IDs

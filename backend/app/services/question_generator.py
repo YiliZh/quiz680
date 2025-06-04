@@ -27,6 +27,7 @@ class QuestionGenerator:
     def generate_questions(self, chapter: Chapter, num_questions: int = 5) -> List[QuestionCreateSchema]:
         """
         Generate questions for a given chapter using rule-based and template approaches.
+        Only generates multiple choice and true/false questions.
         """
         logger.info(f"Generating {num_questions} questions for chapter {chapter.id}")
         
@@ -42,12 +43,11 @@ class QuestionGenerator:
             
             questions = []
             
-            # Calculate distribution of question types
-            mcq_count = max(1, num_questions // 2)
-            tf_count = max(1, num_questions // 4)
-            short_answer_count = max(1, num_questions - mcq_count - tf_count)
+            # Calculate distribution of question types (only MCQ and T/F)
+            mcq_count = max(1, num_questions * 2 // 3)  # 2/3 of questions are MCQ
+            tf_count = num_questions - mcq_count  # Remaining are T/F
             
-            logger.info(f"Question distribution: MCQ={mcq_count}, T/F={tf_count}, Short={short_answer_count}")
+            logger.info(f"Question distribution: MCQ={mcq_count}, T/F={tf_count}")
             
             # Generate different types of questions
             mcqs = self._generate_mcqs_simple(important_sentences, key_concepts, mcq_count, chapter)
@@ -55,9 +55,6 @@ class QuestionGenerator:
             
             tf_questions = self._generate_true_false_simple(important_sentences, tf_count, chapter)
             questions.extend(tf_questions)
-            
-            short_answers = self._generate_short_answer_simple(important_sentences, short_answer_count, chapter)
-            questions.extend(short_answers)
             
             logger.info(f"Successfully generated {len(questions)} questions for chapter {chapter.id}")
             return questions
@@ -294,49 +291,3 @@ class QuestionGenerator:
             modified = f"It is not true that {statement.lower()}"
         
         return modified
-
-    def _generate_short_answer_simple(self, sentences: List[str], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
-        """Generate short answer questions using template approach."""
-        logger.info(f"Generating {count} Short Answer questions using template approach")
-        questions = []
-        
-        sa_templates = [
-            "What is the key concept mentioned in this context?",
-            "What is the main topic being discussed?",
-            "What is the primary focus of this section?",
-            "What concept is being explained here?",
-            "What is the central idea presented?"
-        ]
-        
-        for i in range(min(count, len(sentences))):
-            try:
-                sentence = sentences[i]
-                
-                # Extract a key concept as the answer
-                sentence_words = re.findall(r'\b[A-Z][a-z]+\b', sentence)  # Capitalized words
-                if not sentence_words:
-                    sentence_words = re.findall(r'\b[a-z]{4,}\b', sentence.lower())
-                
-                if not sentence_words:
-                    continue
-                
-                # Choose the most relevant word as answer
-                answer = sentence_words[0] if sentence_words else "concept"
-                question_text = random.choice(sa_templates)
-                
-                question = QuestionCreateSchema(
-                    question_text=f"{question_text}\n\nContext: {sentence[:200]}{'...' if len(sentence) > 200 else ''}",
-                    question_type="short_answer",
-                    options=[],
-                    correct_answer=answer.title(),
-                    difficulty="medium",
-                    chapter_id=chapter.id
-                )
-                questions.append(question)
-                logger.info(f"Generated Short Answer question {i+1}")
-                
-            except Exception as e:
-                logger.error(f"Error generating Short Answer question {i+1}: {str(e)}")
-                continue
-        
-        return questions
