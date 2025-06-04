@@ -8,15 +8,15 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # Database
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "123456"
-    POSTGRES_SERVER: str = "localhost"
-    POSTGRES_PORT: str = "5432"
-    POSTGRES_DB: str = "quiz2"
+    POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "")
+    POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
+    POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "quiz2")
 
     
     # JWT
-    SECRET_KEY: str = "your-secret-key-here"  # Change this in production
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
     
     # OpenAI settings
-    OPENAI_API_KEY: str = "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"
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     
     @property
     def DATABASE_URL(self) -> str:

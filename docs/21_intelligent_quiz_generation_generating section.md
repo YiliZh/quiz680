@@ -276,3 +276,16 @@ torchvision>=0.16.0    # Image processing (if needed)
 5. **Scalability**: Efficient processing of large document collections
 
 This approach leverages your existing tech stack while adding intelligent capabilities for automated, high-quality quiz generation that adapts to both content and learners.
+
+# Database Configuration
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=123456
+POSTGRES_SERVER=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=quiz2
+
+# JWT Configuration
+SECRET_KEY=your-secret-key-here
+
+# OpenAI Configuration
+OPENAI_API_KEY=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
