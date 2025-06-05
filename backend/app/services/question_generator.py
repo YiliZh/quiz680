@@ -23,6 +23,83 @@ class QuestionGenerator:
             logger.error(f"Error loading models: {str(e)}")
             raise
 
+        # Domain-specific question patterns
+        self.domain_patterns = {
+            'concept': {
+                'definition': [
+                    "What is the definition of {concept}?",
+                    "Which of the following best describes {concept}?",
+                    "What does {concept} refer to in this context?"
+                ],
+                'application': [
+                    "How would you apply {concept} in a real-world scenario?",
+                    "Which situation best demonstrates the use of {concept}?",
+                    "In what context would {concept} be most relevant?"
+                ],
+                'analysis': [
+                    "What are the key components of {concept}?",
+                    "How does {concept} relate to {related_concept}?",
+                    "What are the implications of {concept}?"
+                ]
+            },
+            'relationship': {
+                'causal': [
+                    "What is the relationship between {concept1} and {concept2}?",
+                    "How does {concept1} affect {concept2}?",
+                    "What happens to {concept2} when {concept1} changes?",
+                    "Which statement best describes how {concept1} influences {concept2}?"
+                ],
+                'comparative': [
+                    "How does {concept1} differ from {concept2}?",
+                    "What are the similarities between {concept1} and {concept2}?",
+                    "Which statement best compares {concept1} and {concept2}?",
+                    "What distinguishes {concept1} from {concept2}?"
+                ],
+                'hierarchical': [
+                    "Which of the following is a subset of {concept1}?",
+                    "What category does {concept1} belong to?",
+                    "How is {concept1} classified in relation to {concept2}?",
+                    "Which statement best describes the hierarchy between {concept1} and {concept2}?"
+                ]
+            },
+            'application': {
+                'problem_solving': [
+                    "How would you solve this problem using {concept}?",
+                    "Which approach would be most effective for this scenario?",
+                    "What steps would you take to apply {concept} here?",
+                    "How would you use {concept} to address this situation?"
+                ],
+                'evaluation': [
+                    "Which solution best demonstrates the principles of {concept}?",
+                    "How would you evaluate the effectiveness of {concept} in this case?",
+                    "What criteria would you use to assess the application of {concept}?",
+                    "Which approach best exemplifies the use of {concept}?"
+                ],
+                'synthesis': [
+                    "How would you combine {concept1} and {concept2} to solve this problem?",
+                    "What new insights can be gained by applying {concept} in this context?",
+                    "How would you integrate {concept} with existing knowledge?",
+                    "Which approach best synthesizes {concept1} and {concept2}?"
+                ]
+            }
+        }
+        
+        # Domain-specific difficulty indicators
+        self.difficulty_indicators = {
+            'easy': {
+                'keywords': ['define', 'identify', 'list', 'describe', 'explain'],
+                'complexity': 'basic understanding'
+            },
+            'medium': {
+                'keywords': ['compare', 'contrast', 'analyze', 'apply', 'evaluate'],
+                'complexity': 'application and analysis'
+            },
+            'hard': {
+                'keywords': ['synthesize', 'create', 'design', 'critique', 'justify'],
+                'complexity': 'synthesis and evaluation'
+            }
+        }
+
     def generate_questions(self, chapter: Chapter, num_questions: int = 5) -> List[QuestionCreateSchema]:
         """
         Generate educational questions that help students understand the content.
@@ -303,16 +380,20 @@ class QuestionGenerator:
             
             concept1, rel_type, concept2 = relationship
             
-            # Create different types of relationship questions
-            question_patterns = [
-                f"What is the relationship between {concept1} and {concept2}?",
-                f"How does {concept1} affect {concept2}?",
-                f"Which statement best describes the relationship between {concept1} and {concept2}?",
-                f"What happens to {concept2} when {concept1} changes?",
-                f"Which of the following best explains how {concept1} and {concept2} are related?"
-            ]
+            # Determine relationship type and select appropriate pattern
+            if rel_type in ['causes', 'leads_to', 'affects']:
+                pattern_type = 'causal'
+            elif rel_type in ['is_a', 'has_a', 'part_of']:
+                pattern_type = 'hierarchical'
+            else:
+                pattern_type = 'comparative'
             
-            question_text = random.choice(question_patterns)
+            question_patterns = self.domain_patterns['relationship'][pattern_type]
+            question_text = random.choice(question_patterns).format(
+                concept1=concept1,
+                concept2=concept2,
+                concept=concept1  # Add this for patterns that use {concept}
+            )
             
             # Create options based on the relationship and related concepts
             correct_option = f"{concept1} {rel_type} {concept2}"
@@ -327,12 +408,15 @@ class QuestionGenerator:
             # Store the correct answer as a letter (A, B, C, D)
             correct_answer = chr(65 + options.index(correct_option))
             
+            # Determine difficulty based on relationship type
+            difficulty = self._determine_difficulty(question_text, pattern_type)
+            
             question = QuestionCreateSchema(
                 question_text=question_text,
                 question_type="multiple_choice",
                 options=options,
                 correct_answer=correct_answer,
-                difficulty="medium",
+                difficulty=difficulty,
                 chapter_id=chapter.id
             )
             questions.append(question)
@@ -349,11 +433,14 @@ class QuestionGenerator:
         
         # Create options by combining concepts with different relationship types
         relationship_types = {
-            'is_a': ['is a type of', 'is a kind of', 'is a form of'],
-            'has_a': ['has a', 'contains', 'includes'],
-            'can': ['can', 'is able to', 'has the ability to'],
-            'requires': ['requires', 'needs', 'depends on'],
-            'leads_to': ['leads to', 'results in', 'causes']
+            'is_a': ['is a type of', 'is a kind of', 'is a form of', 'is a category of'],
+            'has_a': ['has a', 'contains', 'includes', 'comprises'],
+            'can': ['can', 'is able to', 'has the ability to', 'is capable of'],
+            'requires': ['requires', 'needs', 'depends on', 'relies on'],
+            'leads_to': ['leads to', 'results in', 'causes', 'triggers'],
+            'part_of': ['is part of', 'belongs to', 'is a component of', 'is an element of'],
+            'similar_to': ['is similar to', 'resembles', 'is like', 'is comparable to'],
+            'different_from': ['differs from', 'is distinct from', 'is unlike', 'contrasts with']
         }
         
         # Add options from other relationships
@@ -367,6 +454,21 @@ class QuestionGenerator:
                 if variation != rel_type:
                     option = f"{concept1} {variation} {concept2}"
                     options.append(option)
+        
+        # Add reverse relationship options
+        reverse_relationships = {
+            'is_a': 'has_a',
+            'has_a': 'is_a',
+            'requires': 'enables',
+            'leads_to': 'is_caused_by',
+            'part_of': 'contains',
+            'similar_to': 'different_from'
+        }
+        
+        if rel_type in reverse_relationships:
+            reverse_type = reverse_relationships[rel_type]
+            option = f"{concept2} {reverse_type} {concept1}"
+            options.append(option)
         
         return options
 
@@ -387,16 +489,13 @@ class QuestionGenerator:
             
             logger.info(f"Generating question for concept: {concept}")
             
-            # Create different types of concept questions
-            question_patterns = [
-                f"What is the definition of {concept}?",
-                f"Which of the following best describes {concept}?",
-                f"What does {concept} refer to?",
-                f"Which statement correctly defines {concept}?",
-                f"What is the meaning of {concept} in this context?"
-            ]
-            
-            question_text = random.choice(question_patterns)
+            # Select appropriate question pattern based on concept type
+            pattern_type = random.choice(['definition', 'application', 'analysis'])
+            question_patterns = self.domain_patterns['concept'][pattern_type]
+            question_text = random.choice(question_patterns).format(
+                concept=concept,
+                related_concept=self._get_related_concept(concept, analysis)
+            )
             
             # Create options based on the definition and related concepts
             correct_option = re.sub(r'^\d+\s+', '', definition)  # Remove any prepended numbers
@@ -412,18 +511,45 @@ class QuestionGenerator:
             # Store the correct answer as a letter (A, B, C, D)
             correct_answer = chr(65 + options.index(correct_option))
             
+            # Determine difficulty based on question type and content
+            difficulty = self._determine_difficulty(question_text, pattern_type)
+            
             question = QuestionCreateSchema(
                 question_text=question_text,
                 question_type="multiple_choice",
                 options=options,
                 correct_answer=correct_answer,
-                difficulty="medium",
+                difficulty=difficulty,
                 chapter_id=chapter.id
             )
             questions.append(question)
             logger.info(f"Generated question for concept {concept}")
         
         return questions
+
+    def _get_related_concept(self, concept: str, analysis: Dict[str, Any]) -> str:
+        """Get a related concept from the analysis."""
+        # Look for relationships involving the concept
+        for rel in analysis['relationships']:
+            if concept in rel:
+                # Return the other concept in the relationship
+                return rel[0] if rel[1] == concept else rel[1]
+        return ""
+
+    def _determine_difficulty(self, question_text: str, pattern_type: str) -> str:
+        """Determine question difficulty based on content and pattern type."""
+        # Check for difficulty indicators in the question text
+        for difficulty, indicators in self.difficulty_indicators.items():
+            if any(keyword in question_text.lower() for keyword in indicators['keywords']):
+                return difficulty
+        
+        # Default difficulty based on pattern type
+        difficulty_map = {
+            'definition': 'easy',
+            'application': 'medium',
+            'analysis': 'hard'
+        }
+        return difficulty_map.get(pattern_type, 'medium')
 
     def _generate_application_questions(self, analysis: Dict[str, Any], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
         """Generate questions that test application of concepts."""
@@ -442,16 +568,20 @@ class QuestionGenerator:
             
             logger.info(f"Generating application question for concept: {concept}")
             
-            # Create different types of application questions
-            question_patterns = [
-                f"Which of the following is an example of {concept}?",
-                f"Which scenario best demonstrates {concept}?",
-                f"In which situation would {concept} be most applicable?",
-                f"Which of the following represents a correct application of {concept}?",
-                f"Which case study best illustrates the use of {concept}?"
-            ]
+            # Determine application type and select appropriate pattern
+            if 'solve' in example.lower() or 'solution' in example.lower():
+                pattern_type = 'problem_solving'
+            elif 'evaluate' in example.lower() or 'assess' in example.lower():
+                pattern_type = 'evaluation'
+            else:
+                pattern_type = 'synthesis'
             
-            question_text = random.choice(question_patterns)
+            question_patterns = self.domain_patterns['application'][pattern_type]
+            question_text = random.choice(question_patterns).format(
+                concept=concept,
+                concept1=concept,
+                concept2=self._get_related_concept(concept, analysis)
+            )
             
             # Create options based on the example and related concepts
             correct_option = re.sub(r'^\d+\s+', '', example)  # Remove any prepended numbers
@@ -467,18 +597,62 @@ class QuestionGenerator:
             # Store the correct answer as a letter (A, B, C, D)
             correct_answer = chr(65 + options.index(correct_option))
             
+            # Determine difficulty based on application type
+            difficulty = self._determine_difficulty(question_text, pattern_type)
+            
             question = QuestionCreateSchema(
                 question_text=question_text,
                 question_type="multiple_choice",
                 options=options,
                 correct_answer=correct_answer,
-                difficulty="medium",
+                difficulty=difficulty,
                 chapter_id=chapter.id
             )
             questions.append(question)
             logger.info(f"Generated application question for concept {concept}")
         
         return questions
+
+    def _generate_example_options(self, concept: str, analysis: Dict[str, Any]) -> List[str]:
+        """Generate plausible but incorrect options for application questions."""
+        options = []
+        
+        # Get other examples from the analysis
+        other_examples = [ex for ex in analysis['examples'] if concept not in ex.lower()]
+        
+        # Create variations of the original example
+        variations = [
+            # Add common misconceptions
+            f"Using {concept} in an inappropriate context",
+            f"Misapplying {concept} to a different domain",
+            f"Overgeneralizing the use of {concept}",
+            f"Underestimating the importance of {concept}",
+            f"Overcomplicating the application of {concept}",
+            
+            # Add partial applications
+            f"Partially implementing {concept} without full understanding",
+            f"Applying {concept} without considering all factors",
+            f"Using {concept} in isolation from related concepts",
+            
+            # Add incorrect applications
+            f"Using {concept} in a way that contradicts its principles",
+            f"Applying {concept} without proper preparation",
+            f"Misinterpreting the scope of {concept}"
+        ]
+        
+        # Add variations that make sense
+        for variation in variations:
+            if variation not in options:
+                options.append(variation)
+        
+        # Add other examples that are different enough
+        for example in other_examples:
+            if len(example.split()) > 3 and example not in options:
+                # Remove any prepended numbers
+                example = re.sub(r'^\d+\s+', '', example)
+                options.append(example)
+        
+        return options
 
     def _extract_defined_concept(self, definition: str) -> str:
         """Extract the concept being defined from a definition sentence."""
@@ -539,34 +713,6 @@ class QuestionGenerator:
                 return match.group(1)
         
         return ""
-
-    def _generate_example_options(self, concept: str, analysis: Dict[str, Any]) -> List[str]:
-        """Generate plausible but incorrect example options."""
-        options = []
-        
-        # Get other examples from the analysis
-        other_examples = [e for e in analysis['examples'] if concept not in e]
-        
-        # Get related concepts
-        related_concepts = [c for c in analysis['key_concepts'] if c != concept]
-        
-        # Create options by combining related concepts with example patterns
-        example_patterns = [
-            f"An example of {concept} is {related_concept}",
-            f"{concept} can be seen in {related_concept}",
-            f"{concept} is demonstrated by {related_concept}",
-            f"{concept} is illustrated by {related_concept}",
-            f"{concept} is shown in {related_concept}"
-        ]
-        
-        for pattern in example_patterns:
-            for related_concept in related_concepts:
-                option = pattern.format(concept=concept, related_concept=related_concept)
-                # Remove any prepended numbers
-                option = re.sub(r'^\d+\s+', '', option)
-                options.append(option)
-        
-        return options
 
     def _generate_sentence_questions(self, sentences: List[str], count: int, chapter: Chapter) -> List[QuestionCreateSchema]:
         """Generate questions from important sentences."""
