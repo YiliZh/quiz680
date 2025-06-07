@@ -197,7 +197,7 @@ export default function UploadPage() {
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <IconButton 
-                    onClick={() => navigate(`/uploads/${upload.id}`)}
+                    onClick={() => navigate(`/uploads/${upload.id}/chapters`)}
                     color="primary"
                     title="View Details"
                   >

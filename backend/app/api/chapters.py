@@ -167,8 +167,8 @@ async def generate_questions(
         # Initialize question generator
         generator = QuestionGenerator()
         
-        # Generate questions
-        questions = generator.generate_questions(chapter, num_questions)
+        # Generate questions - properly await the async call
+        questions = await generator.generate_questions(chapter, num_questions)
         logger.info(f"Generated {len(questions)} questions")
         
         if not questions:
