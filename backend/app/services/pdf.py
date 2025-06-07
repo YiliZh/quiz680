@@ -2,6 +2,7 @@ import logging
 import asyncio
 from typing import List, Dict
 import PyPDF2
+import re
 from sqlalchemy.orm import Session
 from app.models import Chapter, Upload
 from app.services.quiz import generate_questions
@@ -32,6 +33,37 @@ def extract_summary(text: str, max_length: int = 500) -> str:
             summary = summary[:max_length] + '...'
     
     return summary
+
+def is_chapter_header(text: str) -> bool:
+    """Check if the text is a chapter header"""
+    # Common chapter header patterns
+    patterns = [
+        r'^Chapter\s+\d+',  # Chapter 1, Chapter 2, etc.
+        r'^CHAPTER\s+\d+',  # CHAPTER 1, CHAPTER 2, etc.
+        r'^\d+\.\s+[A-Z]',  # 1. Title, 2. Title, etc.
+        r'^[IVX]+\.\s+[A-Z]',  # I. Title, II. Title, etc.
+        r'^[A-Z][a-z]+\s+\d+',  # Section 1, Part 1, etc.
+    ]
+    
+    # Check if text matches any pattern
+    for pattern in patterns:
+        if re.match(pattern, text.strip()):
+            return True
+    return False
+
+def extract_chapter_title(text: str) -> str:
+    """Extract chapter title from header text"""
+    # Remove common prefixes
+    text = re.sub(r'^(Chapter|CHAPTER)\s+\d+\s*[-:]*\s*', '', text)
+    text = re.sub(r'^\d+\.\s*', '', text)
+    text = re.sub(r'^[IVX]+\.\s*', '', text)
+    text = re.sub(r'^[A-Z][a-z]+\s+\d+\s*[-:]*\s*', '', text)
+    
+    # Clean up the title
+    title = text.strip()
+    if not title:
+        return "Untitled Chapter"
+    return title
 
 async def process_pdf(file_path: str, upload_id: int, db: Session):
     """Process a PDF file and extract chapters"""
@@ -79,6 +111,7 @@ async def process_pdf(file_path: str, upload_id: int, db: Session):
                 current_chapter = []
                 chapter_number = 1
                 all_text = []
+                current_title = None
                 
                 for page_num in range(num_pages):
                     add_log(f"Processing page {page_num + 1}/{num_pages}")
@@ -92,28 +125,35 @@ async def process_pdf(file_path: str, upload_id: int, db: Session):
                         
                         all_text.append(text)  # Add to all text
                         
-                        # Simple chapter detection (you might want to improve this)
-                        if "Chapter" in text or "CHAPTER" in text:
-                            if current_chapter:
-                                # Save previous chapter
-                                chapter_text = "\n".join(current_chapter)
-                                if chapter_text.strip():  # Only create chapter if there's content
-                                    add_log(f"Creating chapter {chapter_number} with {len(chapter_text)} characters")
-                                    
-                                    # Create chapter using SQLAlchemy ORM
-                                    chapter = Chapter(
-                                        upload_id=upload_id,
-                                        chapter_no=chapter_number,
-                                        title=f"Chapter {chapter_number}",
-                                        content=chapter_text,
-                                        summary=extract_summary(chapter_text),
-                                        keywords=",".join(extract_keywords(chapter_text))
-                                    )
-                                    chapters.append(chapter)
-                                    chapter_number += 1
-                                current_chapter = []
+                        # Split text into lines for better chapter detection
+                        lines = text.split('\n')
+                        for line in lines:
+                            line = line.strip()
+                            if is_chapter_header(line):
+                                if current_chapter:
+                                    # Save previous chapter
+                                    chapter_text = "\n".join(current_chapter)
+                                    if chapter_text.strip():  # Only create chapter if there's content
+                                        add_log(f"Creating chapter {chapter_number}: {current_title or f'Chapter {chapter_number}'}")
+                                        
+                                        # Create chapter using SQLAlchemy ORM
+                                        chapter = Chapter(
+                                            upload_id=upload_id,
+                                            chapter_no=chapter_number,
+                                            title=current_title or f"Chapter {chapter_number}",
+                                            content=chapter_text,
+                                            summary=extract_summary(chapter_text),
+                                            keywords=",".join(extract_keywords(chapter_text))
+                                        )
+                                        chapters.append(chapter)
+                                        chapter_number += 1
+                                    current_chapter = []
+                                    current_title = extract_chapter_title(line)
+                                else:
+                                    current_title = extract_chapter_title(line)
+                            else:
+                                current_chapter.append(line)
                         
-                        current_chapter.append(text)
                     except Exception as page_error:
                         add_log(f"Error processing page {page_num + 1}: {str(page_error)}")
                         continue
@@ -122,12 +162,12 @@ async def process_pdf(file_path: str, upload_id: int, db: Session):
                 if current_chapter:
                     chapter_text = "\n".join(current_chapter)
                     if chapter_text.strip():  # Only create chapter if there's content
-                        add_log(f"Creating final chapter {chapter_number} with {len(chapter_text)} characters")
+                        add_log(f"Creating final chapter {chapter_number}: {current_title or f'Chapter {chapter_number}'}")
                         
                         chapter = Chapter(
                             upload_id=upload_id,
                             chapter_no=chapter_number,
-                            title=f"Chapter {chapter_number}",
+                            title=current_title or f"Chapter {chapter_number}",
                             content=chapter_text,
                             summary=extract_summary(chapter_text),
                             keywords=",".join(extract_keywords(chapter_text))

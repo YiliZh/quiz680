@@ -33,6 +33,8 @@ interface Chapter {
   upload_id: number;
   has_questions: boolean;
   question_count?: number;
+  has_questions: boolean;
+  question_count?: number;
 }
 
 const ChapterDetail: React.FC = () => {
@@ -65,10 +67,21 @@ const ChapterDetail: React.FC = () => {
       setError(null);
       
       // Fetch chapter details
+      // Fetch chapter details
       console.log('Making API request to:', `/chapters/${chapterId}`);
       const chapterResponse = await api.get(`/chapters/${chapterId}`);
       console.log('API response received:', chapterResponse.data);
+      const chapterResponse = await api.get(`/chapters/${chapterId}`);
+      console.log('API response received:', chapterResponse.data);
       
+      // Fetch question count
+      const questionsResponse = await api.get(`/chapters/${chapterId}/questions`);
+      const questionCount = questionsResponse.data.length;
+      
+      setChapter({
+        ...chapterResponse.data,
+        question_count: questionCount
+      });
       // Fetch question count
       const questionsResponse = await api.get(`/chapters/${chapterId}/questions`);
       const questionCount = questionsResponse.data.length;
@@ -102,6 +115,17 @@ const ChapterDetail: React.FC = () => {
     }
   };
 
+  const handleOpenDialog = (type: 'default' | 'chatgpt') => {
+    setGeneratorType(type);
+    setContent(chapter?.content || '');
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setGenerationError(null);
+  };
+
   const handleGenerateQuestions = async () => {
     if (!chapter) return;
     
@@ -125,10 +149,21 @@ const ChapterDetail: React.FC = () => {
     } catch (err: any) {
       setGenerationError(err.response?.data?.detail || 'Failed to generate questions');
       setGenerationLogs(prev => [...prev, `Error: ${err.response?.data?.detail || 'Failed to generate questions'}`]);
+      setGenerationLogs(prev => [...prev, `Error: ${err.response?.data?.detail || 'Failed to generate questions'}`]);
       console.error('Error generating questions:', err);
     } finally {
       setGeneratingQuestions(false);
     }
+  };
+
+  const handleStartQuiz = () => {
+    if (chapter) {
+      navigate(`/quiz/${chapterId}`);
+    }
+  };
+
+  const toggleLogs = () => {
+    setShowLogs(!showLogs);
   };
 
   const handleStartQuiz = () => {
@@ -190,6 +225,7 @@ const ChapterDetail: React.FC = () => {
         </Box>
 
         <Stack direction="row" spacing={2}>
+        <Stack direction="row" spacing={2}>
           <Button
             variant="contained"
             color="secondary"
@@ -198,7 +234,6 @@ const ChapterDetail: React.FC = () => {
           >
             View in PDF
           </Button>
-
           <Button
             variant="contained"
             color="primary"
@@ -269,14 +304,61 @@ const ChapterDetail: React.FC = () => {
         )}
       </Paper>
 
-      <Paper elevation={3} sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Full Content
-        </Typography>
-        <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-          {chapter.content}
-        </Typography>
-      </Paper>
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {generatorType === 'chatgpt' ? 'Generate Questions via ChatGPT' : 'Generate Questions'}
+        </DialogTitle>
+        <DialogContent>
+          {generationError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {generationError}
+            </Alert>
+          )}
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            label="Enter content"
+            margin="normal"
+          />
+          <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              type="number"
+              value={numQuestions}
+              onChange={(e) => setNumQuestions(parseInt(e.target.value))}
+              label="Number of Questions"
+              InputProps={{ inputProps: { min: 1, max: 10 } }}
+            />
+            <FormControl>
+              <InputLabel>Difficulty</InputLabel>
+              <Select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+                label="Difficulty"
+              >
+                <MenuItem value="easy">Easy</MenuItem>
+                <MenuItem value="medium">Medium</MenuItem>
+                <MenuItem value="hard">Hard</MenuItem>
+                <MenuItem value="mixed">Mixed</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleGenerateQuestions}
+            disabled={!content || generatingQuestions}
+            color={generatorType === 'chatgpt' ? 'secondary' : 'primary'}
+            startIcon={generatorType === 'chatgpt' ? <SmartToyIcon /> : undefined}
+          >
+            {generatingQuestions ? 'Generating...' : 'Generate Questions'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

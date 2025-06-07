@@ -338,6 +338,10 @@ def get_chapter_summaries(
         
         logger.info(f"Found upload: id={upload.id}, filename={upload.filename}, status={upload.status}")
         
+        # Get total count for pagination
+        total_count = db.query(ChapterModel).filter(ChapterModel.upload_id == upload_id).count()
+        logger.info(f"Total chapters found: {total_count}")
+        
         # Get chapters with pagination
         chapters = db.query(ChapterModel)\
             .filter(ChapterModel.upload_id == upload_id)\
@@ -346,11 +350,41 @@ def get_chapter_summaries(
             .limit(limit)\
             .all()
         
-        logger.info(f"Found {len(chapters)} chapters for upload {upload_id}")
+        logger.info(f"Returning {len(chapters)} chapters for upload {upload_id}")
         for chapter in chapters:
             logger.info(f"Chapter details - ID: {chapter.id}, Chapter No: {chapter.chapter_no}, Title: {chapter.title}")
         
-        return chapters
+        # Convert SQLAlchemy models to Pydantic models
+        logger.info("Converting SQLAlchemy models to Pydantic models")
+        chapter_schemas = []
+        for chapter in chapters:
+            try:
+                schema = ChapterSchema.from_orm(chapter)
+                logger.debug(f"Converted chapter {chapter.id} to schema. Datetime fields - created_at: {schema.created_at}, updated_at: {schema.updated_at}")
+                chapter_schemas.append(schema)
+            except Exception as conv_error:
+                logger.error(f"Error converting chapter {chapter.id} to schema: {str(conv_error)}")
+                raise
+        
+        # Serialize to dict using model_dump
+        logger.info("Serializing schemas using model_dump")
+        serialized_chapters = []
+        for schema in chapter_schemas:
+            try:
+                chapter_dict = schema.model_dump()
+                logger.debug(f"Serialized chapter {schema.id}. Dict keys: {list(chapter_dict.keys())}")
+                serialized_chapters.append(chapter_dict)
+            except Exception as ser_error:
+                logger.error(f"Error serializing chapter {schema.id}: {str(ser_error)}")
+                raise
+        
+        # Add total count to response headers
+        logger.info(f"Creating JSON response with total count: {total_count}")
+        response = JSONResponse(content=serialized_chapters)
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+        logger.info(f"Response headers: {dict(response.headers)}")
+        return response
         
     except Exception as e:
         logger.error(f"Error fetching chapter summaries: {str(e)}", exc_info=True)

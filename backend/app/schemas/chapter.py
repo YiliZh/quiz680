@@ -20,4 +20,15 @@ class ChapterSchema(ChapterBaseSchema):
     updated_at: Optional[datetime] = None
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None
+        }
+
+    def model_dump(self, **kwargs):
+        data = super().model_dump(**kwargs)
+        if data.get('created_at'):
+            data['created_at'] = data['created_at'].isoformat()
+        if data.get('updated_at'):
+            data['updated_at'] = data['updated_at'].isoformat()
+        return data 

@@ -1,11 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { Box, Button, Typography, Paper, List, ListItem, ListItemText, Alert, CircularProgress, Collapse, IconButton } from '@mui/material'
+import { Box, Button, Typography, Paper, List, ListItem, ListItemText, Alert, CircularProgress, Collapse, IconButton } from '@mui/material'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useUploadFile } from '../api/hooks'
 import { api } from '../services/api'
+import { useUploadFile } from '../api/hooks'
+import { api } from '../services/api'
 import { Upload } from '../types'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import { format } from 'date-fns'
+
+// Type guard to check if an object has processing_logs
+function hasProcessingLogs(obj: any): obj is Upload & { processing_logs: string } {
+  return obj && typeof obj.processing_logs === 'string'
+}
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import VisibilityIcon from '@mui/icons-material/Visibility'
@@ -20,11 +32,19 @@ export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expandedUploads, setExpandedUploads] = useState<Set<number>>(new Set())
+  const [expandedUploads, setExpandedUploads] = useState<Set<number>>(new Set())
   const navigate = useNavigate()
   const { user } = useAuth()
   const queryClient = useQueryClient()
 
   console.log('UploadPage: Component rendered, user:', user?.id)
+
+  useEffect(() => {
+    if (!user) {
+      console.log('UploadPage: No user found, redirecting to login')
+      navigate('/auth')
+    }
+  }, [user, navigate])
 
   useEffect(() => {
     if (!user) {
@@ -39,7 +59,18 @@ export default function UploadPage() {
       const response = await api.get('/uploads')
       return response.data
     },
+    queryFn: async () => {
+      const response = await api.get('/uploads')
+      return response.data
+    },
     enabled: !!user,
+    retry: false,
+    refetchInterval: (query) => {
+      // If any upload is in processing state, refetch every 2 seconds
+      const queryData = query.state.data as Upload[] | undefined
+      return queryData?.some((upload) => upload.status === 'processing') ? 2000 : false
+    }
+  })
     retry: false,
     refetchInterval: (query) => {
       // If any upload is in processing state, refetch every 2 seconds
@@ -99,6 +130,18 @@ export default function UploadPage() {
       })
       setError(error.response?.data?.detail || 'Error uploading file')
     }
+  }
+
+  const toggleUploadExpansion = (uploadId: number) => {
+    setExpandedUploads(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(uploadId)) {
+        newSet.delete(uploadId)
+      } else {
+        newSet.add(uploadId)
+      }
+      return newSet
+    })
   }
 
   const toggleUploadExpansion = (uploadId: number) => {
