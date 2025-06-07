@@ -11,7 +11,16 @@ import {
   Button,
   Alert,
   Stack,
-  Collapse
+  Collapse,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -19,7 +28,8 @@ import {
   Quiz as QuizIcon,
   Add as AddIcon,
   ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon
+  ExpandLess as ExpandLessIcon,
+  SmartToy as SmartToyIcon
 } from '@mui/icons-material';
 import { api } from '../services/api';
 
@@ -31,8 +41,6 @@ interface Chapter {
   summary: string;
   keywords: string;
   upload_id: number;
-  has_questions: boolean;
-  question_count?: number;
   has_questions: boolean;
   question_count?: number;
 }
@@ -47,6 +55,11 @@ const ChapterDetail: React.FC = () => {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationLogs, setGenerationLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [generatorType, setGeneratorType] = useState<'default' | 'chatgpt'>('default');
+  const [content, setContent] = useState('');
+  const [numQuestions, setNumQuestions] = useState(5);
+  const [difficulty, setDifficulty] = useState('mixed');
 
   useEffect(() => {
     console.log('ChapterDetail mounted with chapterId:', chapterId);
@@ -67,21 +80,10 @@ const ChapterDetail: React.FC = () => {
       setError(null);
       
       // Fetch chapter details
-      // Fetch chapter details
       console.log('Making API request to:', `/chapters/${chapterId}`);
       const chapterResponse = await api.get(`/chapters/${chapterId}`);
       console.log('API response received:', chapterResponse.data);
-      const chapterResponse = await api.get(`/chapters/${chapterId}`);
-      console.log('API response received:', chapterResponse.data);
       
-      // Fetch question count
-      const questionsResponse = await api.get(`/chapters/${chapterId}/questions`);
-      const questionCount = questionsResponse.data.length;
-      
-      setChapter({
-        ...chapterResponse.data,
-        question_count: questionCount
-      });
       // Fetch question count
       const questionsResponse = await api.get(`/chapters/${chapterId}/questions`);
       const questionCount = questionsResponse.data.length;
@@ -149,21 +151,10 @@ const ChapterDetail: React.FC = () => {
     } catch (err: any) {
       setGenerationError(err.response?.data?.detail || 'Failed to generate questions');
       setGenerationLogs(prev => [...prev, `Error: ${err.response?.data?.detail || 'Failed to generate questions'}`]);
-      setGenerationLogs(prev => [...prev, `Error: ${err.response?.data?.detail || 'Failed to generate questions'}`]);
       console.error('Error generating questions:', err);
     } finally {
       setGeneratingQuestions(false);
     }
-  };
-
-  const handleStartQuiz = () => {
-    if (chapter) {
-      navigate(`/quiz/${chapterId}`);
-    }
-  };
-
-  const toggleLogs = () => {
-    setShowLogs(!showLogs);
   };
 
   const handleStartQuiz = () => {
@@ -224,7 +215,6 @@ const ChapterDetail: React.FC = () => {
           ))}
         </Box>
 
-        <Stack direction="row" spacing={2}>
         <Stack direction="row" spacing={2}>
           <Button
             variant="contained"
