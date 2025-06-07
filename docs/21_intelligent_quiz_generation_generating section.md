@@ -288,4 +288,4 @@ POSTGRES_DB=quiz2
 SECRET_KEY=your-secret-key-here
 
 # OpenAI Configuration
-OPENAI_API_KEY=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
+OPENAI_API_KEY=sk-proj-
