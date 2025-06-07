@@ -55,13 +55,11 @@ const ChapterDetail: React.FC = () => {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationLogs, setGenerationLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
-  
-  // New state for question generation dialog
   const [openDialog, setOpenDialog] = useState(false);
+  const [generatorType, setGeneratorType] = useState<'default' | 'chatgpt'>('default');
   const [content, setContent] = useState('');
   const [numQuestions, setNumQuestions] = useState(5);
   const [difficulty, setDifficulty] = useState('mixed');
-  const [generatorType, setGeneratorType] = useState<'default' | 'chatgpt'>('default');
 
   useEffect(() => {
     console.log('ChapterDetail mounted with chapterId:', chapterId);
@@ -142,29 +140,14 @@ const ChapterDetail: React.FC = () => {
       // Add initial log
       setGenerationLogs(prev => [...prev, 'Starting question generation process...']);
       
-      const formData = new FormData();
-      formData.append('content', content);
-      formData.append('num_questions', numQuestions.toString());
-      formData.append('difficulty', difficulty);
-      formData.append('generator_type', generatorType);
-
-      const response = await fetch(`${api.defaults.baseURL}/questions/generate`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to generate questions');
-      }
-
+      // Generate questions
+      const response = await api.post(`/chapters/${chapterId}/generate-questions?num_questions=5`);
+      
       // Add success log
       setGenerationLogs(prev => [...prev, 'Question generation completed successfully!']);
       
       // Refresh chapter data to update has_questions status
       await fetchChapter();
-      handleCloseDialog();
     } catch (err: any) {
       setGenerationError(err.response?.data?.detail || 'Failed to generate questions');
       setGenerationLogs(prev => [...prev, `Error: ${err.response?.data?.detail || 'Failed to generate questions'}`]);
@@ -243,30 +226,23 @@ const ChapterDetail: React.FC = () => {
           </Button>
           <Button
             variant="contained"
-            onClick={() => handleOpenDialog('default')}
-            startIcon={<QuizIcon />}
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={handleGenerateQuestions}
             disabled={generatingQuestions}
           >
-            Generate Questions
+            {generatingQuestions ? 'Generating Questions...' : 'Generate Questions'}
           </Button>
+
           <Button
             variant="contained"
-            color="secondary"
-            onClick={() => handleOpenDialog('chatgpt')}
-            startIcon={<SmartToyIcon />}
-            disabled={generatingQuestions}
+            color="success"
+            startIcon={<QuizIcon />}
+            onClick={handleStartQuiz}
+            disabled={!chapter.question_count || chapter.question_count === 0}
           >
-            Generate via ChatGPT
+            Take Quiz {chapter.question_count ? `(${chapter.question_count} questions)` : ''}
           </Button>
-          {chapter.has_questions && (
-            <Button
-              variant="outlined"
-              onClick={handleStartQuiz}
-              startIcon={<QuizIcon />}
-            >
-              Take Quiz
-            </Button>
-          )}
         </Stack>
 
         {generationError && (
@@ -276,17 +252,39 @@ const ChapterDetail: React.FC = () => {
         )}
 
         {generationLogs.length > 0 && (
-          <Box mt={2}>
+          <Box sx={{ mt: 2 }}>
             <Button
               onClick={toggleLogs}
               endIcon={showLogs ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              size="small"
             >
-              {showLogs ? 'Hide Logs' : 'Show Logs'}
+              {showLogs ? 'Hide Generation Logs' : 'Show Generation Logs'}
             </Button>
             <Collapse in={showLogs}>
-              <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
+              <Paper 
+                variant="outlined" 
+                sx={{ 
+                  mt: 1, 
+                  p: 2, 
+                  maxHeight: '300px', 
+                  overflow: 'auto',
+                  backgroundColor: '#f5f5f5'
+                }}
+              >
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Generation Process Logs:
+                </Typography>
                 {generationLogs.map((log, index) => (
-                  <Typography key={index} variant="body2">
+                  <Typography 
+                    key={index} 
+                    variant="body2" 
+                    component="div" 
+                    sx={{ 
+                      fontFamily: 'monospace',
+                      whiteSpace: 'pre-wrap',
+                      mb: 0.5
+                    }}
+                  >
                     {log}
                   </Typography>
                 ))}

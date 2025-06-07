@@ -1,10 +1,19 @@
 ## How to start it
 ```
    cd backend
+   
    pip install -r requirements.txt
-   uvicorn app.main:app --reload
+   python -m app.core.nltk_setup
+
+   python
+   import nltk
+   nltk.download('punkt_tab')
+   nltk.download('averaged_perceptron_tagger_eng')
+   nltk.download('maxent_ne_chunker_tab')
 
    python -m uvicorn app.main:app --reload --log-level debug
+
+ 
 
 ```
 

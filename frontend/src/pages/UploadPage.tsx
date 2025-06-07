@@ -1,11 +1,23 @@
 import React, { useState, useEffect } from 'react'
-import { Box, Button, Typography, Paper, List, ListItem, ListItemText, Alert, CircularProgress, Collapse, IconButton } from '@mui/material'
+import { 
+  Box, 
+  Button, 
+  Typography, 
+  Paper, 
+  List, 
+  ListItem, 
+  ListItemText, 
+  Alert, 
+  CircularProgress, 
+  Collapse, 
+  IconButton 
+} from '@mui/material'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useUploadFile } from '../api/hooks'
 import { api } from '../services/api'
-import { Upload } from '../types'
+import type { Upload } from '../types/index'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import VisibilityIcon from '@mui/icons-material/Visibility'
@@ -197,7 +209,7 @@ export default function UploadPage() {
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <IconButton 
-                    onClick={() => navigate(`/uploads/${upload.id}`)}
+                    onClick={() => navigate(`/uploads/${upload.id}/chapters`)}
                     color="primary"
                     title="View Details"
                   >
