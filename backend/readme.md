@@ -13,6 +13,11 @@
 
    python -m uvicorn app.main:app --reload --log-level debug
 
+
+   pg_dump -U postgres -d quiz2 -f C:\cims\code\yl\quiz680\docs\quiz2_0608.sql
+   123456
+
+
  
 
 ```

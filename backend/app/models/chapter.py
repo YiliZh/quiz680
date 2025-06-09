@@ -15,4 +15,5 @@ class Chapter(Base, TimestampMixin):
     has_questions = Column(Boolean, nullable=False, default=False)
 
     upload = relationship("Upload", back_populates="chapters")
-    questions = relationship("Question", back_populates="chapter", cascade="all, delete-orphan") 
+    questions = relationship("Question", back_populates="chapter", cascade="all, delete-orphan")
+    exam_sessions = relationship("ExamSession", back_populates="chapter", cascade="all, delete-orphan") 

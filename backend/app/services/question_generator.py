@@ -609,20 +609,38 @@ class QuestionGenerator:
                 options = self._generate_vocabulary_options(word, q_type, external_data)
                 
                 if len(options) >= 4:
-                    # Convert options to letter format
-                    letter_options = {chr(65 + i): opt for i, opt in enumerate(options)}  # A, B, C, D
-                    
-                    question = QuestionCreateSchema(
+                    question = self._create_question_schema(
                         question_text=question_text,
-                        question_type="multiple_choice",
-                        options=letter_options,
-                        correct_answer='A',  # First option is always correct
+                        options=options,
                         difficulty=self._determine_language_difficulty(q_type),
                         chapter_id=chapter.id
                     )
                     questions.append(question)
             
             return questions
+
+    def _create_question_schema(self, question_text: str, options: List[str], difficulty: str, chapter_id: int) -> QuestionCreateSchema:
+        """Helper function to create a question schema with randomized correct answer position."""
+        # 1. Shuffle but keep original index
+        correct_text = options[0]
+        shuffled = options[:]  # copy
+        random.shuffle(shuffled)
+
+        # 2. Re-letter into a dict
+        lettered = {chr(65 + i): opt for i, opt in enumerate(shuffled)}
+
+        # 3. Find which letter now holds the correct answer
+        correct_letter = next(letter for letter, text in lettered.items() if text == correct_text)
+
+        # 4. Build the question schema
+        return QuestionCreateSchema(
+            question_text=question_text,
+            question_type="multiple_choice",
+            options=lettered,
+            correct_answer=correct_letter,
+            difficulty=difficulty,
+            chapter_id=chapter_id
+        )
 
     def _generate_vocabulary_options(self, word: str, q_type: str, external_data: Dict[str, Any]) -> List[str]:
         """Generate options for vocabulary questions."""
@@ -728,14 +746,9 @@ class QuestionGenerator:
                 options = self._generate_grammar_options(sentence, q_type, patterns)
                 
                 if len(options) >= 4:
-                    # Convert options to letter format
-                    letter_options = {chr(65 + i): opt for i, opt in enumerate(options)}  # A, B, C, D
-                    
-                    question = QuestionCreateSchema(
+                    question = self._create_question_schema(
                         question_text=question_text,
-                        question_type="multiple_choice",
-                        options=letter_options,
-                        correct_answer='A',  # First option is always correct
+                        options=options,
                         difficulty=self._determine_language_difficulty(q_type),
                         chapter_id=chapter.id
                     )
@@ -875,14 +888,9 @@ class QuestionGenerator:
                 options = self._generate_reading_options(passage, q_type)
                 
                 if len(options) >= 4:
-                    # Convert options to letter format
-                    letter_options = {chr(65 + i): opt for i, opt in enumerate(options)}  # A, B, C, D
-                    
-                    question = QuestionCreateSchema(
+                    question = self._create_question_schema(
                         question_text=question_text,
-                        question_type="multiple_choice",
-                        options=letter_options,
-                        correct_answer='A',  # First option is always correct
+                        options=options,
                         difficulty=self._determine_language_difficulty(q_type),
                         chapter_id=chapter.id
                     )
@@ -1210,11 +1218,9 @@ class QuestionGenerator:
                     logger.info(f"Generated {len(options)} options for question")
                     
                     if len(options) >= 4:
-                        question = QuestionCreateSchema(
+                        question = self._create_question_schema(
                             question_text=question_text,
-                            question_type="multiple_choice",
-                            options=options,  # Pass as list
-                            correct_answer='A',  # First option is always correct
+                            options=options,
                             difficulty=self._determine_difficulty(question_text, pattern_category),
                             chapter_id=chapter.id
                         )
@@ -1300,11 +1306,9 @@ class QuestionGenerator:
                 options = self._generate_domain_options(concept, pattern_category, domain_concepts)
                 
                 if len(options) >= 4:
-                    question = QuestionCreateSchema(
+                    question = self._create_question_schema(
                         question_text=question_text,
-                        question_type="multiple_choice",
                         options=options,
-                        correct_answer='A',  # First option is always correct
                         difficulty=self._determine_difficulty(question_text, pattern_category),
                         chapter_id=chapter.id
                     )
@@ -1811,11 +1815,9 @@ class QuestionGenerator:
                 
                 if len(options) >= 4:
                     try:
-                        question = QuestionCreateSchema(
+                        question = self._create_question_schema(
                             question_text=question_text,
-                            question_type="multiple_choice",
-                            options=options,  # Pass as list
-                            correct_answer='A',  # First option is always correct
+                            options=options,
                             difficulty="medium",
                             chapter_id=chapter.id
                         )
@@ -1825,7 +1827,6 @@ class QuestionGenerator:
                         logger.error(f"Error creating question schema: {str(e)}", exc_info=True)
                         continue
             
-            logger.info(f"Generated {len(questions)} basic questions")
             return questions
             
         except Exception as e:
