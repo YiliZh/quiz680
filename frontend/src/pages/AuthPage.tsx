@@ -28,14 +28,15 @@ function AuthPage() {
       console.log('Attempting auth with:', { email, username, isLogin })
       try {
         if (isLogin) {
-          // For login, use FormData to match OAuth2PasswordRequestForm
-          const formData = new FormData()
+          // For login, use URLSearchParams to properly format form data
+          const formData = new URLSearchParams()
           formData.append('username', email) // Use email as username for login
           formData.append('password', password)
-          const response = await api.post('/api/auth/login', formData, {
+          const response = await api.post('/api/auth/login', formData.toString(), {
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded'
-            }
+            },
+            withCredentials: true
           })
           return response.data
         } else {

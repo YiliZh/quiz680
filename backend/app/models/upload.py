@@ -1,6 +1,5 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
-from datetime import datetime
 from app.models.base import Base, TimestampMixin
 
 class Upload(Base, TimestampMixin):
@@ -13,8 +12,6 @@ class Upload(Base, TimestampMixin):
     file_path = Column(String(255))
     status = Column(String(50), default="pending")  # pending, processing, completed, failed
     processing_logs = Column(Text)  # Store processing logs
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id"))
     has_questions = Column(Boolean, default=False)
 

@@ -38,6 +38,7 @@ function QuizPage() {
   const [score, setScore] = useState(0)
   const [currentAnswerFeedback, setCurrentAnswerFeedback] = useState<{ is_correct: boolean; explanation?: string } | null>(null)
   const [showAnswer, setShowAnswer] = useState(true)
+  const [startTime] = useState(Date.now())
 
   const { data: questions = [], isLoading } = useQuestions(chapterId!) as { data: Question[] | undefined, isLoading: boolean }
   const submitAnswer = useSubmitAnswer()
@@ -92,12 +93,38 @@ function QuizPage() {
     }
   }
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1)
       setCurrentAnswerFeedback(null)
     } else {
-      setShowResults(true)
+      // Create exam session when quiz is completed
+      try {
+        const examSession = await api.post('/api/exam-sessions', {
+          chapter_id: chapterId,
+          score: score,
+          total_questions: questions.length,
+          duration: Math.floor((Date.now() - startTime) / 1000) // Convert to seconds
+        })
+        
+        // Create review recommendations for failed questions
+        const failedQuestions = questions.filter((q, index) => {
+          const attempt = selectedAnswers[q.id]
+          return !attempt || attempt !== q.correct_answer
+        })
+        
+        if (failedQuestions.length > 0) {
+          await api.post('/api/review-recommendations/batch', {
+            exam_session_id: examSession.data.id,
+            question_ids: failedQuestions.map(q => q.id)
+          })
+        }
+        
+        setShowResults(true)
+      } catch (error) {
+        console.error('Error saving exam session:', error)
+        setShowResults(true) // Still show results even if saving fails
+      }
     }
   }
 
