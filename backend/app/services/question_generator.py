@@ -20,6 +20,11 @@ class QuestionGenerator:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using device: {self.device}")
         
+        # Add length limitations
+        self.MAX_QUESTION_LENGTH = 200  # Maximum length for question text
+        self.MAX_OPTION_LENGTH = 100    # Maximum length for each option
+        self.MAX_OPTIONS = 4            # Maximum number of options
+        
         try:
             # Download required NLTK data
             download_nltk_data()
@@ -620,27 +625,40 @@ class QuestionGenerator:
             return questions
 
     def _create_question_schema(self, question_text: str, options: List[str], difficulty: str, chapter_id: int) -> QuestionCreateSchema:
-        """Helper function to create a question schema with randomized correct answer position."""
-        # 1. Shuffle but keep original index
-        correct_text = options[0]
-        shuffled = options[:]  # copy
-        random.shuffle(shuffled)
+        """Create a question schema with length limitations."""
+        try:
+            # Truncate question text if too long
+            if len(question_text) > self.MAX_QUESTION_LENGTH:
+                question_text = question_text[:self.MAX_QUESTION_LENGTH].rsplit(' ', 1)[0] + '...'
+                logger.warning(f"Question text truncated to {len(question_text)} characters")
 
-        # 2. Re-letter into a dict
-        lettered = {chr(65 + i): opt for i, opt in enumerate(shuffled)}
+            # Truncate options if too long and limit number of options
+            truncated_options = []
+            for option in options[:self.MAX_OPTIONS]:
+                if len(option) > self.MAX_OPTION_LENGTH:
+                    truncated_option = option[:self.MAX_OPTION_LENGTH].rsplit(' ', 1)[0] + '...'
+                    logger.warning(f"Option truncated to {len(truncated_option)} characters")
+                    truncated_options.append(truncated_option)
+                else:
+                    truncated_options.append(option)
 
-        # 3. Find which letter now holds the correct answer
-        correct_letter = next(letter for letter, text in lettered.items() if text == correct_text)
+            # Ensure we have at least 2 options
+            if len(truncated_options) < 2:
+                logger.warning("Not enough options after truncation, skipping question")
+                return None
 
-        # 4. Build the question schema
-        return QuestionCreateSchema(
-            question_text=question_text,
-            question_type="multiple_choice",
-            options=list(lettered.values()),  # Convert dict values to list
-            correct_answer=correct_letter,
-            difficulty=difficulty,
-            chapter_id=chapter_id
-        )
+            # Create the question schema
+            return QuestionCreateSchema(
+                question_text=question_text,
+                question_type="multiple_choice",
+                options=truncated_options,
+                correct_answer="A",  # First option is always correct
+                difficulty=difficulty,
+                chapter_id=chapter_id
+            )
+        except Exception as e:
+            logger.error(f"Error creating question schema: {str(e)}")
+            return None
 
     def _generate_vocabulary_options(self, word: str, q_type: str, external_data: Dict[str, Any]) -> List[str]:
         """Generate options for vocabulary questions."""
@@ -1500,29 +1518,41 @@ class QuestionGenerator:
         
         return list(set(concepts))  # Remove duplicates
 
-    def _extract_relationships(self, sentence: str) -> List[Tuple[str, str, str]]:
-        """Extract relationships between concepts."""
+    def _extract_relationships(self, sentence: str) -> List[Dict[str, str]]:
+        """Extract relationships between concepts in a sentence."""
         relationships = []
         
-        # Look for relationship indicators
-        indicators = {
-            'is_a': ['is a', 'are a', 'is an', 'are an'],
-            'has_a': ['has a', 'have a', 'contains', 'includes'],
-            'can': ['can', 'could', 'may', 'might'],
-            'requires': ['requires', 'needs', 'must have'],
-            'leads_to': ['leads to', 'results in', 'causes', 'creates']
-        }
+        # Split sentence into parts based on relationship indicators
+        parts = re.split(r'\b(is|are|was|were|has|have|had|can|could|will|would|should|must|may|might)\b', sentence, flags=re.IGNORECASE)
         
-        for rel_type, rel_indicators in indicators.items():
-            for indicator in rel_indicators:
-                if indicator in sentence.lower():
-                    # Extract the concepts before and after the indicator
-                    parts = sentence.lower().split(indicator)
-                    if len(parts) > 1:
-                        concept1 = parts[0].split()[-1]  # Last word before indicator
-                        concept2 = parts[1].split('.')[0].strip().split()[0]  # First word after indicator
-                        relationships.append((concept1, rel_type, concept2))
-        
+        # If we don't have enough parts for a relationship, return empty list
+        if len(parts) < 2:
+            return relationships
+            
+        try:
+            # Get the first concept (before the indicator)
+            concept1 = parts[0].strip().split()[-1]  # Last word before indicator
+            
+            # Get the second concept (after the indicator)
+            # Handle cases where there might not be a period or the split might fail
+            after_indicator = parts[1].strip()
+            if '.' in after_indicator:
+                concept2 = after_indicator.split('.')[0].strip().split()[0]  # First word after indicator
+            else:
+                concept2 = after_indicator.split()[0]  # First word after indicator
+                
+            # Get the relationship type (the indicator word)
+            relationship_type = parts[1].strip().split()[0] if len(parts) > 1 else "is"
+            
+            relationships.append({
+                "concept1": concept1,
+                "concept2": concept2,
+                "relationship": relationship_type
+            })
+        except (IndexError, AttributeError) as e:
+            logger.warning(f"Failed to extract relationship from sentence: {sentence}. Error: {str(e)}")
+            return relationships
+            
         return relationships
 
     def _extract_technical_terms(self, text: str) -> List[str]:
