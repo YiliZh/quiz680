@@ -4,6 +4,7 @@ from .chapter import ChapterCreateSchema, ChapterSchema
 from .question import QuestionCreateSchema, QuestionResponseSchema, AnswerSubmitSchema
 from .question_attempt import QuestionAttemptCreateSchema, QuestionAttemptResponseSchema
 from .auth import TokenSchema, TokenDataSchema
+from .exam_session import ExamSessionWithDetails, ExamSessionCreate
 
 __all__ = [
     'UserCreateSchema',
@@ -19,4 +20,6 @@ __all__ = [
     'QuestionAttemptResponseSchema',
     'TokenSchema',
     'TokenDataSchema',
+    'ExamSessionWithDetails',
+    'ExamSessionCreate',
 ] 

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime, timedelta
 from pydantic import BaseModel
+import logging
 
 from app.core.deps import get_db, get_current_user
 from app.models import User, ExamSession, ReviewRecommendation, Question, Chapter, Upload, QuestionAttempt
@@ -10,6 +11,8 @@ from app.schemas.exam_session import ExamSessionWithDetails, ExamSessionCreate
 from app.schemas.review_recommendation import ReviewRecommendationWithQuestion
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 class ReviewRecommendationBatchCreate(BaseModel):
     exam_session_id: int
@@ -40,7 +43,29 @@ def get_exam_history(
         session_dict = session.__dict__
         session_dict["chapter_title"] = chapter.title
         session_dict["book_title"] = upload.filename
-        session_dict["performance_percentage"] = (session.score / session.total_questions) * 100
+        
+        # Add detailed logging for debugging
+        logger.info(f"Processing exam session {session.id}:")
+        logger.info(f"Raw values - score: {session.score} (type: {type(session.score)}), total_questions: {session.total_questions} (type: {type(session.total_questions)})")
+        
+        # Safely calculate performance percentage
+        try:
+            total_questions = float(session.total_questions or 0)
+            score = float(session.score or 0)
+            logger.info(f"Converted values - score: {score}, total_questions: {total_questions}")
+            
+            if total_questions <= 0:
+                logger.warning(f"Session {session.id}: total_questions is {total_questions}, setting performance to 0.0")
+                session_dict["performance_percentage"] = 0.0
+            else:
+                performance = (score / total_questions) * 100
+                logger.info(f"Session {session.id}: Calculated performance: {performance}%")
+                session_dict["performance_percentage"] = performance
+                
+        except (TypeError, ValueError, ZeroDivisionError) as e:
+            logger.error(f"Error calculating performance percentage for session {session.id}: {str(e)}")
+            logger.error(f"Problematic values - score: {session.score}, total_questions: {session.total_questions}")
+            session_dict["performance_percentage"] = 0.0
         
         # Get attempts for this session
         attempts = []
@@ -91,6 +116,50 @@ def get_review_recommendations(
         result.append(ReviewRecommendationWithQuestion(**rec_dict))
     
     return result
+
+
+@router.get("/history/{session_id}", response_model=ExamSessionWithDetails)
+def get_exam_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get details of a specific exam session"""
+    exam_session = (
+        db.query(ExamSession)
+        .filter(
+            ExamSession.id == session_id,
+            ExamSession.user_id == current_user.id
+        )
+        .first()
+    )
+    
+    if not exam_session:
+        raise HTTPException(status_code=404, detail="Exam session not found")
+    
+    chapter = db.query(Chapter).filter(Chapter.id == exam_session.chapter_id).first()
+    upload = db.query(Upload).filter(Upload.id == chapter.upload_id).first()
+    
+    session_dict = exam_session.__dict__
+    session_dict["chapter_title"] = chapter.title
+    session_dict["book_title"] = upload.filename
+    session_dict["performance_percentage"] = 0.0 if exam_session.total_questions == 0 else (exam_session.score / exam_session.total_questions) * 100
+    
+    # Get attempts for this session
+    attempts = []
+    for attempt in exam_session.attempts:
+        question = db.query(Question).filter(Question.id == attempt.question_id).first()
+        attempts.append({
+            "question_text": question.q_text,
+            "user_answer": attempt.chosen_answer,
+            "correct_answer": question.correct_answer,
+            "is_correct": attempt.is_correct,
+            "explanation": question.explanation
+        })
+    session_dict["attempts"] = attempts
+    
+    return ExamSessionWithDetails(**session_dict) 
+
 
 @router.post("/review-recommendations/{recommendation_id}/complete")
 def complete_review(
@@ -167,14 +236,14 @@ def create_exam_session(
     session_dict = exam_session.__dict__
     session_dict["chapter_title"] = chapter.title
     session_dict["book_title"] = upload.filename
-    session_dict["performance_percentage"] = (exam_session.score / exam_session.total_questions) * 100
+    session_dict["performance_percentage"] = 0.0 if exam_session.total_questions == 0 else (exam_session.score / exam_session.total_questions) * 100
     
     # Add attempt details
     attempts_list = []
     for attempt in attempts:
         question = db.query(Question).filter(Question.id == attempt.question_id).first()
         attempts_list.append({
-            "question_text": question.question_text,
+            "question_text": question.q_text,
             "user_answer": attempt.chosen_answer,
             "correct_answer": question.correct_answer,
             "is_correct": attempt.is_correct,

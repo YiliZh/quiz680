@@ -2,10 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import logging
+from datetime import datetime
 
 from app.core.deps import get_db, get_current_user
-from app.models import Question, QuestionAttempt
-from app.schemas import QuestionCreateSchema, QuestionResponseSchema, AnswerSubmitSchema, QuestionAttemptResponseSchema
+from app.models import Question, QuestionAttempt, ExamSession, Chapter, Upload
+from app.schemas.question import QuestionCreateSchema, QuestionResponseSchema, AnswerSubmitSchema
+from app.schemas.question_attempt import QuestionAttemptResponseSchema
+from app.schemas.exam_session import ExamSessionWithDetails
 from app.services.quiz import generate_questions
 from app.services.question_generator import QuestionGenerator
 from app.services.chatgpt_question_generator import ChatGPTQuestionGenerator
@@ -107,10 +110,32 @@ async def submit_answer(
         
         is_correct = chosen_answer == correct_answer
     
+    # Get or create an exam session for this chapter
+    exam_session = db.query(ExamSession).filter(
+        ExamSession.user_id == current_user.id,
+        ExamSession.chapter_id == question.chapter_id,
+        ExamSession.completed_at == None  # Only get active sessions
+    ).first()
+    
+    if not exam_session:
+        # Create a new exam session
+        exam_session = ExamSession(
+            user_id=current_user.id,
+            chapter_id=question.chapter_id,
+            score=0,
+            total_questions=0,
+            correct_answers=0,
+            started_at=datetime.utcnow()
+        )
+        db.add(exam_session)
+        db.commit()
+        db.refresh(exam_session)
+    
     # Create the attempt record
     attempt = QuestionAttempt(
         user_id=current_user.id,
         question_id=question_id,
+        exam_session_id=exam_session.id,
         chosen_answer=answer.chosen_answer,
         is_correct=is_correct
     )
@@ -120,3 +145,85 @@ async def submit_answer(
     db.refresh(attempt)
     
     return attempt 
+
+@router.post("/complete-session/{chapter_id}", response_model=ExamSessionWithDetails)
+async def complete_exam_session(
+    chapter_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Complete an exam session and calculate the final score"""
+    # Get the active exam session
+    exam_session = db.query(ExamSession).filter(
+        ExamSession.user_id == current_user.id,
+        ExamSession.chapter_id == chapter_id,
+        ExamSession.completed_at == None  # Only get active sessions
+    ).first()
+    
+    if not exam_session:
+        raise HTTPException(status_code=404, detail="No active exam session found")
+    
+    # Get all attempts for this session
+    attempts = db.query(QuestionAttempt).filter(
+        QuestionAttempt.exam_session_id == exam_session.id
+    ).all()
+    
+    # Calculate score
+    total_questions = len(attempts)
+    correct_answers = sum(1 for attempt in attempts if attempt.is_correct)
+    
+    # Update exam session
+    exam_session.total_questions = total_questions
+    exam_session.correct_answers = correct_answers
+    exam_session.score = correct_answers
+    exam_session.completed_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(exam_session)
+    
+    # Get chapter and upload info for response
+    chapter = db.query(Chapter).filter(Chapter.id == exam_session.chapter_id).first()
+    upload = db.query(Upload).filter(Upload.id == chapter.upload_id).first()
+    
+    # Prepare response
+    session_dict = exam_session.__dict__
+    session_dict["chapter_title"] = chapter.title
+    session_dict["book_title"] = upload.filename
+    
+    # Add detailed logging for debugging
+    logger.info(f"Processing exam session {exam_session.id}:")
+    logger.info(f"Raw values - score: {exam_session.score} (type: {type(exam_session.score)}), total_questions: {exam_session.total_questions} (type: {type(exam_session.total_questions)})")
+    
+    # Safely calculate performance percentage
+    try:
+        total_questions = float(exam_session.total_questions or 0)
+        score = float(exam_session.score or 0)
+        logger.info(f"Converted values - score: {score}, total_questions: {total_questions}")
+        
+        if total_questions <= 0:
+            logger.warning(f"Session {exam_session.id}: total_questions is {total_questions}, setting performance to 0.0")
+            session_dict["performance_percentage"] = 0.0
+        else:
+            performance = (score / total_questions) * 100
+            logger.info(f"Session {exam_session.id}: Calculated performance: {performance}%")
+            session_dict["performance_percentage"] = performance
+            
+    except (TypeError, ValueError, ZeroDivisionError) as e:
+        logger.error(f"Error calculating performance percentage for session {exam_session.id}: {str(e)}")
+        logger.error(f"Problematic values - score: {exam_session.score}, total_questions: {exam_session.total_questions}")
+        session_dict["performance_percentage"] = 0.0
+  
+    # Add attempt details
+    attempts_list = []
+    for attempt in attempts:
+        question = db.query(Question).filter(Question.id == attempt.question_id).first()
+        attempts_list.append({
+            "question_text": question.question_text,
+            "user_answer": attempt.chosen_answer,
+            "correct_answer": question.correct_answer,
+            "is_correct": attempt.is_correct,
+            "explanation": question.explanation
+        })
+    session_dict["attempts"] = attempts_list
+    
+    return ExamSessionWithDetails(**session_dict) 

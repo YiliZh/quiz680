@@ -680,8 +680,16 @@ class QuestionGenerator:
                     options.extend(definitions[:3])  # Use up to 3 definitions
                 
                 # If not enough definitions, add some generic ones
+                generic_options = [
+                    f"A word related to {word}",
+                    f"Another meaning of {word}",
+                    f"A different usage of {word}",
+                    f"An alternative definition of {word}"
+                ]
                 while len(options) < 4:
-                    options.append(f"A word related to {word}")
+                    option = random.choice(generic_options)
+                    if option not in options:  # Ensure no duplicates
+                        options.append(option)
             
             elif q_type == 'synonym':
                 # Get synonyms from external data
@@ -690,8 +698,16 @@ class QuestionGenerator:
                     options.extend(synonyms[:3])  # Use up to 3 synonyms
                 
                 # If not enough synonyms, add some generic ones
+                generic_options = [
+                    f"Another word for {word}",
+                    f"A similar term to {word}",
+                    f"A word with similar meaning to {word}",
+                    f"An alternative word for {word}"
+                ]
                 while len(options) < 4:
-                    options.append(f"Another word for {word}")
+                    option = random.choice(generic_options)
+                    if option not in options:  # Ensure no duplicates
+                        options.append(option)
             
             elif q_type == 'antonym':
                 # Get antonyms from external data
@@ -703,8 +719,16 @@ class QuestionGenerator:
                     options.extend(antonyms[:3])  # Use up to 3 antonyms
                 
                 # If not enough antonyms, add some generic ones
+                generic_options = [
+                    f"Opposite of {word}",
+                    f"Contrary to {word}",
+                    f"An antonym of {word}",
+                    f"A word opposite in meaning to {word}"
+                ]
                 while len(options) < 4:
-                    options.append(f"Opposite of {word}")
+                    option = random.choice(generic_options)
+                    if option not in options:  # Ensure no duplicates
+                        options.append(option)
             
             else:  # usage
                 # Generate example sentences
@@ -713,8 +737,16 @@ class QuestionGenerator:
                     options.extend(examples[:3])  # Use up to 3 examples
                 
                 # If not enough examples, add some generic ones
+                generic_options = [
+                    f"Example sentence using {word}",
+                    f"A sentence containing {word}",
+                    f"Proper usage of {word}",
+                    f"Correct way to use {word}"
+                ]
                 while len(options) < 4:
-                    options.append(f"Example sentence using {word}")
+                    option = random.choice(generic_options)
+                    if option not in options:  # Ensure no duplicates
+                        options.append(option)
             
             # Ensure we have exactly 4 options
             if len(options) > 4:
@@ -727,7 +759,10 @@ class QuestionGenerator:
                     f"Different usage of {word}",
                     f"Alternative meaning of {word}"
                 ]
-                options.extend(generic_options[:4 - len(options)])
+                while len(options) < 4:
+                    option = random.choice(generic_options)
+                    if option not in options:  # Ensure no duplicates
+                        options.append(option)
             
             return options
             
@@ -1707,7 +1742,8 @@ class QuestionGenerator:
                     'term': word,
                     'type': tag,
                     'context': sentence,
-                    'domain': 'computer_science'
+                    'domain': 'computer_science',
+                    'sentence': sentence
                 })
         
         return concepts

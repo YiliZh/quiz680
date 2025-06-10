@@ -2,6 +2,13 @@ from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel
 
+class QuestionAttemptDetail(BaseModel):
+    question_text: str
+    user_answer: str
+    correct_answer: str
+    is_correct: bool
+    explanation: Optional[str] = None
+
 class ExamSessionBase(BaseModel):
     chapter_id: int
     score: int
@@ -25,4 +32,4 @@ class ExamSessionWithDetails(ExamSession):
     chapter_title: str
     book_title: str
     performance_percentage: float
-    attempts: List[dict]  # Will contain question details and user's answers 
+    attempts: List[QuestionAttemptDetail] 
