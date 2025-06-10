@@ -636,7 +636,7 @@ class QuestionGenerator:
         return QuestionCreateSchema(
             question_text=question_text,
             question_type="multiple_choice",
-            options=lettered,
+            options=list(lettered.values()),  # Convert dict values to list
             correct_answer=correct_letter,
             difficulty=difficulty,
             chapter_id=chapter_id
@@ -1087,7 +1087,7 @@ class QuestionGenerator:
                         question = QuestionCreateSchema(
                             question_text=question_text,
                             question_type="multiple_choice",
-                            options=letter_options,
+                            options=list(letter_options.values()),  # Convert dict values to list
                             correct_answer=correct_letter,
                             difficulty="medium",
                             chapter_id=chapter.id
