@@ -2,13 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime, timedelta
+from pydantic import BaseModel
 
 from app.core.deps import get_db, get_current_user
-from app.models import User, ExamSession, ReviewRecommendation, Question, Chapter, Upload
-from app.schemas.exam_session import ExamSessionWithDetails
+from app.models import User, ExamSession, ReviewRecommendation, Question, Chapter, Upload, QuestionAttempt
+from app.schemas.exam_session import ExamSessionWithDetails, ExamSessionCreate
 from app.schemas.review_recommendation import ReviewRecommendationWithQuestion
 
 router = APIRouter()
+
+class ReviewRecommendationBatchCreate(BaseModel):
+    exam_session_id: int
+    question_ids: List[int]
 
 @router.get("/history", response_model=List[ExamSessionWithDetails])
 def get_exam_history(
@@ -60,12 +65,11 @@ def get_review_recommendations(
     current_user: User = Depends(get_current_user)
 ):
     """Get user's review recommendations based on Ebbinghaus Forgetting Curve"""
-    now = datetime.utcnow()
+    now = datetime.utcnow().replace(tzinfo=None)  # Make it timezone-naive
     recommendations = (
         db.query(ReviewRecommendation)
         .filter(
-            ReviewRecommendation.user_id == current_user.id,
-            ReviewRecommendation.next_review_at <= now
+            ReviewRecommendation.user_id == current_user.id
         )
         .all()
     )
@@ -77,10 +81,12 @@ def get_review_recommendations(
         upload = db.query(Upload).filter(Upload.id == chapter.upload_id).first()
         
         rec_dict = rec.__dict__
-        rec_dict["question_text"] = question.q_text
+        rec_dict["question_text"] = question.question_text
         rec_dict["chapter_title"] = chapter.title
         rec_dict["book_title"] = upload.filename
-        rec_dict["days_until_review"] = (rec.next_review_at - now).days
+        # Ensure next_review_at is timezone-naive before subtraction
+        next_review = rec.next_review_at.replace(tzinfo=None) if rec.next_review_at.tzinfo else rec.next_review_at
+        rec_dict["days_until_review"] = (next_review - now).days
         
         result.append(ReviewRecommendationWithQuestion(**rec_dict))
     
@@ -123,4 +129,129 @@ def complete_review(
     recommendation.next_review_at = now + timedelta(days=review_intervals[recommendation.review_stage])
     
     db.commit()
-    return {"message": "Review completed successfully"} 
+    return {"message": "Review completed successfully"}
+
+@router.post("/sessions", response_model=ExamSessionWithDetails)
+def create_exam_session(
+    exam_data: ExamSessionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new exam session when a quiz is completed"""
+    # Create the exam session
+    exam_session = ExamSession(
+        user_id=current_user.id,
+        chapter_id=exam_data.chapter_id,
+        score=exam_data.score,
+        total_questions=exam_data.total_questions,
+        correct_answers=exam_data.score,  # score is the number of correct answers
+        started_at=datetime.utcnow() - timedelta(seconds=exam_data.duration or 0),
+        completed_at=datetime.utcnow()
+    )
+    
+    db.add(exam_session)
+    db.commit()
+    db.refresh(exam_session)
+    
+    # Get the chapter and upload info for the response
+    chapter = db.query(Chapter).filter(Chapter.id == exam_session.chapter_id).first()
+    upload = db.query(Upload).filter(Upload.id == chapter.upload_id).first()
+    
+    # Get the attempts for this session
+    attempts = db.query(QuestionAttempt).filter(
+        QuestionAttempt.user_id == current_user.id,
+        QuestionAttempt.exam_session_id == exam_session.id
+    ).all()
+    
+    # Prepare the response
+    session_dict = exam_session.__dict__
+    session_dict["chapter_title"] = chapter.title
+    session_dict["book_title"] = upload.filename
+    session_dict["performance_percentage"] = (exam_session.score / exam_session.total_questions) * 100
+    
+    # Add attempt details
+    attempts_list = []
+    for attempt in attempts:
+        question = db.query(Question).filter(Question.id == attempt.question_id).first()
+        attempts_list.append({
+            "question_text": question.question_text,
+            "user_answer": attempt.chosen_answer,
+            "correct_answer": question.correct_answer,
+            "is_correct": attempt.is_correct,
+            "explanation": question.explanation
+        })
+    session_dict["attempts"] = attempts_list
+    
+    return ExamSessionWithDetails(**session_dict)
+
+@router.post("/review-recommendations", response_model=List[ReviewRecommendationWithQuestion])
+def create_review_recommendations(
+    data: ReviewRecommendationBatchCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Create review recommendations for failed questions"""
+    # Verify exam session exists and belongs to user
+    exam_session = (
+        db.query(ExamSession)
+        .filter(
+            ExamSession.id == data.exam_session_id,
+            ExamSession.user_id == current_user.id
+        )
+        .first()
+    )
+    
+    if not exam_session:
+        raise HTTPException(status_code=404, detail="Exam session not found")
+    
+    # Create review recommendations for each question
+    recommendations = []
+    now = datetime.utcnow()
+    
+    for question_id in data.question_ids:
+        # Check if recommendation already exists
+        existing = (
+            db.query(ReviewRecommendation)
+            .filter(
+                ReviewRecommendation.user_id == current_user.id,
+                ReviewRecommendation.question_id == question_id
+            )
+            .first()
+        )
+        
+        if existing:
+            # Update existing recommendation
+            existing.last_reviewed_at = now
+            existing.review_stage = 1  # Reset to first stage
+            existing.next_review_at = now + timedelta(days=1)  # Review in 1 day
+            recommendations.append(existing)
+        else:
+            # Create new recommendation
+            recommendation = ReviewRecommendation(
+                user_id=current_user.id,
+                question_id=question_id,
+                last_reviewed_at=now,
+                next_review_at=now + timedelta(days=1),
+                review_stage=1
+            )
+            db.add(recommendation)
+            recommendations.append(recommendation)
+    
+    db.commit()
+    
+    # Prepare response with question details
+    result = []
+    for rec in recommendations:
+        question = db.query(Question).filter(Question.id == rec.question_id).first()
+        chapter = db.query(Chapter).filter(Chapter.id == question.chapter_id).first()
+        upload = db.query(Upload).filter(Upload.id == chapter.upload_id).first()
+        
+        rec_dict = rec.__dict__
+        rec_dict["question_text"] = question.question_text
+        rec_dict["chapter_title"] = chapter.title
+        rec_dict["book_title"] = upload.filename
+        rec_dict["days_until_review"] = (rec.next_review_at - now).days
+        
+        result.append(ReviewRecommendationWithQuestion(**rec_dict))
+    
+    return result 

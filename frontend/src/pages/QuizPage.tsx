@@ -100,7 +100,7 @@ function QuizPage() {
     } else {
       // Create exam session when quiz is completed
       try {
-        const examSession = await api.post('/api/exam-sessions', {
+        const examSession = await api.post('/exam-history/sessions', {
           chapter_id: chapterId,
           score: score,
           total_questions: questions.length,
@@ -114,7 +114,7 @@ function QuizPage() {
         })
         
         if (failedQuestions.length > 0) {
-          await api.post('/api/review-recommendations/batch', {
+          await api.post('/exam-history/review-recommendations', {
             exam_session_id: examSession.data.id,
             question_ids: failedQuestions.map(q => q.id)
           })

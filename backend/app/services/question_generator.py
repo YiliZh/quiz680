@@ -620,9 +620,10 @@ class QuestionGenerator:
                         difficulty=self._determine_language_difficulty(q_type),
                         chapter_id=chapter.id
                     )
-                    questions.append(question)
-            
-            return questions
+                    if question:  # Only append if question creation was successful
+                        questions.append(question)
+        
+        return questions  # Return after processing all words
 
     def _create_question_schema(self, question_text: str, options: List[str], difficulty: str, chapter_id: int) -> QuestionCreateSchema:
         """Create a question schema with length limitations."""
@@ -632,9 +633,16 @@ class QuestionGenerator:
                 question_text = question_text[:self.MAX_QUESTION_LENGTH].rsplit(' ', 1)[0] + '...'
                 logger.warning(f"Question text truncated to {len(question_text)} characters")
 
+            # Ensure options is a list
+            if not isinstance(options, list):
+                logger.error(f"Options must be a list, got {type(options)}")
+                return None
+
             # Truncate options if too long and limit number of options
             truncated_options = []
             for option in options[:self.MAX_OPTIONS]:
+                if not isinstance(option, str):
+                    option = str(option)
                 if len(option) > self.MAX_OPTION_LENGTH:
                     truncated_option = option[:self.MAX_OPTION_LENGTH].rsplit(' ', 1)[0] + '...'
                     logger.warning(f"Option truncated to {len(truncated_option)} characters")
