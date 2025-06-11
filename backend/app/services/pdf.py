@@ -35,38 +35,76 @@ def extract_summary(text: str, max_length: int = 500) -> str:
     return summary
 
 def is_chapter_header(text: str) -> bool:
-    """Check if the text is a chapter header"""
-    # Common chapter header patterns
+    """Check if the text is a chapter header using enhanced pattern matching"""
+    # Clean the text
+    text = text.strip()
+    
+    # Skip empty or very short lines
+    if len(text) < 3:
+        return False
+        
+    # Common chapter header patterns with improved accuracy
     patterns = [
-        r'^Chapter\s+\d+',  # Chapter 1, Chapter 2, etc.
-        r'^CHAPTER\s+\d+',  # CHAPTER 1, CHAPTER 2, etc.
-        r'^\d+\.\s+[A-Z]',  # 1. Title, 2. Title, etc.
-        r'^[IVX]+\.\s+[A-Z]',  # I. Title, II. Title, etc.
-        r'^[A-Z][a-z]+\s+\d+',  # Section 1, Part 1, etc.
+        # Standard chapter patterns
+        r'^Chapter\s+\d+\s*[-:]*\s*[A-Z]',  # Chapter 1: Title
+        r'^CHAPTER\s+\d+\s*[-:]*\s*[A-Z]',  # CHAPTER 1: Title
+        r'^\d+\.\s+[A-Z][a-z]+',  # 1. Title
+        r'^[IVX]+\.\s+[A-Z][a-z]+',  # I. Title
+        
+        # Book-specific patterns
+        r'^Clean\s+Code\s*[-:]*\s*[A-Z]',  # Clean Code: Title
+        r'^The\s+Elements\s+of\s+Style\s*[-:]*\s*[A-Z]',  # The Elements of Style: Title
+        
+        # Common section patterns
+        r'^[A-Z][a-z]+\s+\d+\s*[-:]*\s*[A-Z]',  # Section 1: Title
+        r'^Part\s+\d+\s*[-:]*\s*[A-Z]',  # Part 1: Title
     ]
     
     # Check if text matches any pattern
     for pattern in patterns:
-        if re.match(pattern, text.strip()):
+        if re.match(pattern, text):
             return True
+            
+    # Additional validation
+    # 1. Check if the line is too long (likely not a header)
+    if len(text) > 100:
+        return False
+        
+    # 2. Check if it's all uppercase (likely a header)
+    if text.isupper() and len(text) > 3:
+        return True
+        
+    # 3. Check if it starts with a number followed by a period
+    if re.match(r'^\d+\.\s+[A-Z]', text):
+        return True
+        
     return False
 
 def extract_chapter_title(text: str) -> str:
-    """Extract chapter title from header text"""
+    """Extract chapter title from header text with improved cleaning"""
     # Remove common prefixes
     text = re.sub(r'^(Chapter|CHAPTER)\s+\d+\s*[-:]*\s*', '', text)
     text = re.sub(r'^\d+\.\s*', '', text)
     text = re.sub(r'^[IVX]+\.\s*', '', text)
     text = re.sub(r'^[A-Z][a-z]+\s+\d+\s*[-:]*\s*', '', text)
     
+    # Remove book titles if present
+    text = re.sub(r'^Clean\s+Code\s*[-:]*\s*', '', text)
+    text = re.sub(r'^The\s+Elements\s+of\s+Style\s*[-:]*\s*', '', text)
+    
     # Clean up the title
     title = text.strip()
+    
+    # Remove any remaining special characters at the start/end
+    title = re.sub(r'^[-:]*\s*', '', title)
+    title = re.sub(r'\s*[-:]*$', '', title)
+    
     if not title:
         return "Untitled Chapter"
     return title
 
 async def process_pdf(file_path: str, upload_id: int, db: Session):
-    """Process a PDF file and extract chapters"""
+    """Process PDF file with improved chapter detection"""
     print(f"\n=== PDF Processing Started ===")
     print(f"File: {file_path}")
     print(f"Upload ID: {upload_id}")
@@ -96,128 +134,133 @@ async def process_pdf(file_path: str, upload_id: int, db: Session):
     try:
         # Open and read the PDF
         add_log("Opening PDF file...")
-        try:
-            with open(file_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                num_pages = len(pdf_reader.pages)
-                add_log(f"PDF opened successfully. Total pages: {num_pages}")
-                
-                if num_pages == 0:
-                    add_log("Error: PDF file is empty")
-                    raise ValueError("PDF file is empty")
-                
-                # Extract text from each page
-                chapters = []
-                current_chapter = []
-                chapter_number = 1
-                all_text = []
-                current_title = None
-                
-                for page_num in range(num_pages):
-                    add_log(f"Processing page {page_num + 1}/{num_pages}")
-                    try:
-                        page = pdf_reader.pages[page_num]
-                        text = page.extract_text()
-                        
-                        if not text:
-                            add_log(f"Warning: No text extracted from page {page_num + 1}")
-                            continue
-                        
-                        all_text.append(text)  # Add to all text
-                        
-                        # Split text into lines for better chapter detection
-                        lines = text.split('\n')
-                        for line in lines:
-                            line = line.strip()
-                            if is_chapter_header(line):
-                                if current_chapter:
-                                    # Save previous chapter
-                                    chapter_text = "\n".join(current_chapter)
-                                    if chapter_text.strip():  # Only create chapter if there's content
-                                        add_log(f"Creating chapter {chapter_number}: {current_title or f'Chapter {chapter_number}'}")
-                                        
-                                        # Create chapter using SQLAlchemy ORM
-                                        chapter = Chapter(
-                                            upload_id=upload_id,
-                                            chapter_no=chapter_number,
-                                            title=current_title or f"Chapter {chapter_number}",
-                                            content=chapter_text,
-                                            summary=extract_summary(chapter_text),
-                                            keywords=",".join(extract_keywords(chapter_text))
-                                        )
-                                        chapters.append(chapter)
-                                        chapter_number += 1
-                                    current_chapter = []
-                                    current_title = extract_chapter_title(line)
-                                else:
-                                    current_title = extract_chapter_title(line)
-                            else:
-                                current_chapter.append(line)
-                        
-                    except Exception as page_error:
-                        add_log(f"Error processing page {page_num + 1}: {str(page_error)}")
-                        continue
-                
-                # Save the last chapter
-                if current_chapter:
-                    chapter_text = "\n".join(current_chapter)
-                    if chapter_text.strip():  # Only create chapter if there's content
-                        add_log(f"Creating final chapter {chapter_number}: {current_title or f'Chapter {chapter_number}'}")
-                        
-                        chapter = Chapter(
-                            upload_id=upload_id,
-                            chapter_no=chapter_number,
-                            title=current_title or f"Chapter {chapter_number}",
-                            content=chapter_text,
-                            summary=extract_summary(chapter_text),
-                            keywords=",".join(extract_keywords(chapter_text))
-                        )
-                        chapters.append(chapter)
-                
-                if not chapters:
-                    add_log("Warning: No chapters were extracted from the PDF")
-                    # Create a single chapter with all content
-                    all_text_combined = "\n".join(all_text)
-                    if all_text_combined.strip():  # Only create chapter if there's content
-                        chapter = Chapter(
-                            upload_id=upload_id,
-                            chapter_no=1,
-                            title="Document",
-                            content=all_text_combined,
-                            summary=extract_summary(all_text_combined),
-                            keywords=",".join(extract_keywords(all_text_combined))
-                        )
-                        chapters.append(chapter)
-                    else:
-                        raise ValueError("No text content could be extracted from the PDF")
-                
-                # Save all chapters to database
-                add_log(f"Saving {len(chapters)} chapters to database")
+        with open(file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            num_pages = len(pdf_reader.pages)
+            add_log(f"PDF opened successfully. Total pages: {num_pages}")
+            
+            if num_pages == 0:
+                add_log("Error: PDF file is empty")
+                raise ValueError("PDF file is empty")
+            
+            # Extract text from each page
+            chapters = []
+            current_chapter = []
+            chapter_number = 1
+            all_text = []
+            current_title = None
+            page_buffer = []  # Buffer to store potential chapter content
+            
+            for page_num in range(num_pages):
+                add_log(f"Processing page {page_num + 1}/{num_pages}")
                 try:
-                    for chapter in chapters:
-                        db.add(chapter)
-                    db.commit()
-                    add_log("Chapters saved successfully")
-                except Exception as db_error:
-                    add_log(f"Error saving chapters to database: {str(db_error)}")
-                    db.rollback()
-                    raise
-                
-                # Update upload status
-                add_log("Updating upload status to completed")
-                upload.status = "completed"
-                db.commit()
-                add_log("Upload status updated successfully")
-                
-                add_log("=== PDF Processing Completed Successfully ===")
-                return chapters
-                
-        except Exception as pdf_error:
-            if "PDF" in str(pdf_error) or "cannot" in str(pdf_error).lower() or "not a PDF" in str(pdf_error).lower():
-                add_log(f"Error reading PDF file: {str(pdf_error)}")
-                raise ValueError(f"Invalid PDF file: {str(pdf_error)}")
-            else:
-                raise
+                    page = pdf_reader.pages[page_num]
+                    text = page.extract_text()
+                    
+                    if not text:
+                        add_log(f"Warning: No text extracted from page {page_num + 1}")
+                        continue
+                    
+                    all_text.append(text)
+                    
+                    # Split text into lines for better chapter detection
+                    lines = text.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        
+                        # Check if this is a chapter header
+                        if is_chapter_header(line):
+                            # Process any buffered content
+                            if page_buffer:
+                                buffer_text = "\n".join(page_buffer)
+                                if buffer_text.strip():
+                                    current_chapter.append(buffer_text)
+                                page_buffer = []
+                            
+                            # Save previous chapter if exists
+                            if current_chapter:
+                                chapter_text = "\n".join(current_chapter)
+                                if chapter_text.strip():
+                                    add_log(f"Creating chapter {chapter_number}: {current_title or f'Chapter {chapter_number}'}")
+                                    
+                                    chapter = Chapter(
+                                        upload_id=upload_id,
+                                        chapter_no=chapter_number,
+                                        title=current_title or f"Chapter {chapter_number}",
+                                        content=chapter_text,
+                                        summary=extract_summary(chapter_text),
+                                        keywords=",".join(extract_keywords(chapter_text))
+                                    )
+                                    chapters.append(chapter)
+                                    chapter_number += 1
+                                current_chapter = []
+                            
+                            current_title = extract_chapter_title(line)
+                            add_log(f"Found new chapter: {current_title}")
+                        else:
+                            # Add content to current chapter or buffer
+                            if current_chapter:
+                                current_chapter.append(line)
+                            else:
+                                page_buffer.append(line)
+                    
+                except Exception as page_error:
+                    add_log(f"Error processing page {page_num + 1}: {str(page_error)}")
+                    continue
+            
+            # Process any remaining content
+            if page_buffer:
+                buffer_text = "\n".join(page_buffer)
+                if buffer_text.strip():
+                    current_chapter.append(buffer_text)
+            
+            # Save the last chapter
+            if current_chapter:
+                chapter_text = "\n".join(current_chapter)
+                if chapter_text.strip():
+                    add_log(f"Creating final chapter {chapter_number}: {current_title or f'Chapter {chapter_number}'}")
+                    
+                    chapter = Chapter(
+                        upload_id=upload_id,
+                        chapter_no=chapter_number,
+                        title=current_title or f"Chapter {chapter_number}",
+                        content=chapter_text,
+                        summary=extract_summary(chapter_text),
+                        keywords=",".join(extract_keywords(chapter_text))
+                    )
+                    chapters.append(chapter)
+            
+            # If no chapters were found, create a single chapter with all content
+            if not chapters:
+                add_log("Warning: No chapters were extracted from the PDF")
+                all_text_combined = "\n".join(all_text)
+                if all_text_combined.strip():
+                    chapter = Chapter(
+                        upload_id=upload_id,
+                        chapter_no=1,
+                        title="Document",
+                        content=all_text_combined,
+                        summary=extract_summary(all_text_combined),
+                        keywords=",".join(extract_keywords(all_text_combined))
+                    )
+                    chapters.append(chapter)
+                else:
+                    raise ValueError("No text content could be extracted from the PDF")
+            
+            # Save all chapters to database
+            add_log(f"Saving {len(chapters)} chapters to database")
+            for chapter in chapters:
+                db.add(chapter)
+            db.commit()
+            
+            # Update upload status
+            add_log("Updating upload status to completed")
+            upload.status = "completed"
+            db.commit()
+            add_log("Upload status updated successfully")
+            
+            add_log("=== PDF Processing Completed Successfully ===")
+            return chapters
             
     except Exception as e:
         add_log(f"Error processing PDF: {str(e)}")

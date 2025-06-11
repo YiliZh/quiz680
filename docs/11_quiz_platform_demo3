@@ -1,0 +1,306 @@
+# Smart Learning Platform - Technical Documentation
+
+## 1. Project Overview
+
+### 1.1 Main Idea
+
+A smart learning platform that helps users learn through PDF content analysis, quiz generation, and spaced repetition review. The system uses modern AI technologies to create an interactive and personalized learning experience.
+
+### 1.2 Core Features
+
+- PDF Upload & Chapter Extraction
+- AI-Powered Question Generation
+- Interactive Quiz System
+- Spaced Repetition Review System
+- Progress Tracking & Analytics
+
+## 2. Technical Architecture
+
+### 2.1 System Components
+
+```
+Frontend (React + Material-UI)
+    ↓
+Backend (FastAPI)
+    ↓
+Database (PostgreSQL)
+    ↓
+AI Services (Hugging Face + Local LLM)
+```
+
+### 2.2 Technology Stack
+
+- **Frontend**: React, Material-UI, TypeScript
+- **Backend**: FastAPI, Python 3.8+
+- **Database**: PostgreSQL, SQLAlchemy
+- **AI**: Hugging Face Transformers, Sentence Transformers
+- **Authentication**: JWT, bcrypt
+- **PDF Processing**: pdfminer.six, pdfplumber, PyPDF2
+
+## 3. Detailed Technical Solutions
+
+### 3.1 Authentication & Security
+
+#### Implementation
+
+```python
+# JWT Implementation
+- Token generation:
+  - Access token (15 minutes)
+  - Refresh token (7 days)
+
+# Password Security
+- bcrypt hashing
+- Salt generation
+- Password validation rules
+
+# Database Security
+- SQLAlchemy with PostgreSQL
+- Connection pooling
+- Query parameterization
+```
+
+#### Security Features
+
+- JWT-based authentication
+- Secure password hashing
+- Token-based session management
+- Role-based access control
+- API rate limiting
+
+### 3.2 PDF Processing Pipeline
+
+#### Libraries & Versions
+
+- pdfminer.six (v20250327)
+- pdfplumber (v0.11.6)
+- PyPDF2 (v3.0.1)
+- pypdfium2 (v4.30.1)
+
+#### Limitations
+
+**pdfminer.six:**
+- Struggles with complex layouts (multi-column)
+- May miss text in scanned documents
+- Limited support for tables and charts
+- Can't handle password-protected PDFs
+
+**pdfplumber:**
+- Memory intensive for large files
+- Slower processing speed
+- May have issues with certain fonts
+
+**PyPDF2 & pypdfium2:**
+- File size limit: ~100MB
+- Maximum pages: ~1000
+- Supported formats: PDF 1.4-1.7
+- No support for interactive elements
+
+#### Current Implementation
+
+```python
+# File upload handling
+- Size validation
+- Format checking
+- Virus scanning
+
+# Text extraction
+- OCR for scanned documents
+- Layout analysis
+- Text cleaning and normalization
+
+# Content processing
+- Chapter detection
+- Section identification
+- Metadata extraction
+```
+
+### 3.3 Chapter Management
+
+#### Current Implementation
+
+```python
+# Chapter Detection Logic
+- Pattern-based detection:
+  - Chapter headers (e.g., "Chapter 1", "1. Introduction")
+  - Numbered sections (e.g., "1.1", "1.2")
+  - Heading styles and formatting
+
+# Content Organization
+- Hierarchical structure:
+  - Book → Chapters → Sections
+- Metadata storage:
+  - Chapter title
+  - Page numbers
+  - Content length
+  - Difficulty level
+
+# Database Schema
+class Chapter(Base):
+    id = Column(Integer, primary_key=True)
+    title = Column(String)
+    content = Column(Text)
+    page_start = Column(Integer)
+    page_end = Column(Integer)
+    upload_id = Column(Integer, ForeignKey("uploads.id"))
+```
+
+### 3.4 Question Generation
+
+#### AI Technologies
+
+- Hugging Face Transformers (v4.52.4)
+- Sentence Transformers (v2.2.2)
+- KeyBERT (v0.9.0)
+- NLTK (v3.8.1)
+
+#### Current Implementation
+
+```python
+# Text Analysis
+- Use sentence-transformers for semantic understanding
+- Extract key concepts using KeyBERT
+- Identify important sentences and relationships
+
+# Question Types
+- Multiple choice
+- True/False
+- Short answer
+
+# Answer Generation
+- Generate correct answer
+- Create plausible distractors
+- Validate answer correctness
+```
+
+### 3.5 Review System
+
+#### Spaced Repetition Implementation
+
+```python
+# Review Stages
+- Stage 1: 1 day
+- Stage 2: 3 days
+- Stage 3: 7 days
+- Stage 4: 14 days
+- Stage 5: 30 days
+
+# Review Tracking
+- Performance metrics
+- Progress monitoring
+- Review scheduling
+
+# User Feedback
+- Answer correctness
+- Review effectiveness
+- Learning progress
+```
+
+## 4. Performance Optimizations
+
+### 4.1 Current Implementation
+
+```python
+# Caching
+- Redis for session data
+- In-memory caching for frequent queries
+
+# Database
+- Indexed queries
+- Connection pooling
+- Query optimization
+
+# API
+- Async processing
+- Rate limiting
+- Response compression
+```
+
+### 4.2 Error Handling & Logging
+
+```python
+# Error Tracking
+- Structured logging
+- Error categorization
+- Stack trace analysis
+
+# Monitoring
+- Performance metrics
+- User activity
+- System health
+
+# Recovery
+- Automatic retries
+- Fallback mechanisms
+- Data consistency checks
+```
+
+## 5. Development Tools & Practices
+
+### 5.1 Cursor IDE Features
+
+- AI-powered code completion
+- Real-time error detection
+- Code refactoring suggestions
+- Documentation generation
+
+### 5.2 Development Workflow
+
+- Version control with Git
+- Code review process
+- Testing with pytest
+- CI/CD integration
+
+## 6. LLM Integration
+
+### 6.1 Evolution
+
+- **Previous**: OpenAI API
+- **Current**: Local LLM integration
+
+### 6.2 Benefits
+
+- Reduced latency
+- Cost efficiency
+- Data privacy
+- Custom model fine-tuning
+
+## 7. Workflow Diagrams
+
+### 7.1 User Flow
+
+```
+[Login] → [Upload PDF] → [Chapter Selection] → [Quiz Generation] → [Take Quiz] → [Review System]
+```
+
+### 7.2 PDF Processing
+
+```
+[PDF Upload] → [Text Extraction] → [Chapter Detection] → [Content Analysis] → [Question Generation]
+```
+
+### 7.3 Review System
+
+```
+[Failed Questions] → [Review Schedule] → [Review Reminders] → [Progress Tracking]
+```
+
+## 8. Future Improvements
+
+### 8.1 Planned Enhancements
+
+- Enhanced PDF processing capabilities
+- Improved question generation quality
+- Advanced analytics and reporting
+- Mobile application development
+
+### 8.2 Potential Integrations
+
+- Learning Management Systems
+- Content Management Systems
+- Analytics platforms
+- Mobile applications
+
+---
+
+*This document serves as comprehensive technical documentation for the Smart Learning Platform project.*
