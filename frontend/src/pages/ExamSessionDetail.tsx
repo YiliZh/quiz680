@@ -167,7 +167,7 @@ function ExamSessionDetail() {
         </Box>
       </Paper>
 
-      <Paper sx={{ p: 3 }}>
+      <Paper sx={{ p: 3}} style={{ display:'none'}}>
         <Typography variant="h6" gutterBottom>
           Question Attempts
         </Typography>

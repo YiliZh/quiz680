@@ -21,7 +21,7 @@ class ExamSessionCreate(ExamSessionBase):
 class ExamSession(ExamSessionBase):
     id: int
     user_id: int
-    completed_at: datetime
+    completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -32,4 +32,17 @@ class ExamSessionWithDetails(ExamSession):
     chapter_title: str
     book_title: str
     performance_percentage: float
-    attempts: List[QuestionAttemptDetail] 
+    attempts: List[QuestionAttemptDetail]
+
+class ReviewRecommendation(BaseModel):
+    id: int
+    question_text: str
+    chapter_title: str
+    book_title: str
+    last_reviewed_at: Optional[datetime] = None
+    next_review_at: datetime
+    review_stage: int
+    days_until_review: int
+
+    class Config:
+        from_attributes = True 

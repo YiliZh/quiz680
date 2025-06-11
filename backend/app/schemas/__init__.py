@@ -5,6 +5,7 @@ from .question import QuestionCreateSchema, QuestionResponseSchema, AnswerSubmit
 from .question_attempt import QuestionAttemptCreateSchema, QuestionAttemptResponseSchema
 from .auth import TokenSchema, TokenDataSchema
 from .exam_session import ExamSessionWithDetails, ExamSessionCreate
+from .review_recommendation import ReviewRecommendationWithQuestion
 
 __all__ = [
     'UserCreateSchema',
@@ -22,4 +23,5 @@ __all__ = [
     'TokenDataSchema',
     'ExamSessionWithDetails',
     'ExamSessionCreate',
+    'ReviewRecommendationWithQuestion',
 ] 
