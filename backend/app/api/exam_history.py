@@ -24,6 +24,16 @@ class ReviewRecommendationBatchCreate(BaseModel):
     exam_session_id: int
     question_ids: List[int]
 
+class QuestionReviewDetail(BaseModel):
+    id: int
+    question_text: str
+    question_type: str
+    options: Optional[List[str]]
+    correct_answer: str
+    explanation: Optional[str]
+    chapter_title: str
+    book_title: str
+
 @router.get("/history", response_model=dict)
 def get_exam_history(
     current_user: UserModel = Depends(get_current_user),
@@ -369,3 +379,37 @@ def create_review_recommendations(
         result.append(ReviewRecommendationWithQuestion(**rec_dict))
     
     return result 
+
+@router.get("/review-recommendations/{recommendation_id}/question", response_model=QuestionReviewDetail)
+def get_question_for_review(
+    recommendation_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get question details for review"""
+    recommendation = (
+        db.query(ReviewRecommendation)
+        .filter(
+            ReviewRecommendation.id == recommendation_id,
+            ReviewRecommendation.user_id == current_user.id
+        )
+        .first()
+    )
+    
+    if not recommendation:
+        raise HTTPException(status_code=404, detail="Review recommendation not found")
+    
+    question = db.query(Question).filter(Question.id == recommendation.question_id).first()
+    chapter = db.query(Chapter).filter(Chapter.id == question.chapter_id).first()
+    upload = db.query(Upload).filter(Upload.id == chapter.upload_id).first()
+    
+    return QuestionReviewDetail(
+        id=recommendation.id,
+        question_text=question.question_text,
+        question_type=question.question_type,
+        options=question.options,
+        correct_answer=question.correct_answer,
+        explanation=question.explanation,
+        chapter_title=chapter.title,
+        book_title=upload.filename
+    ) 

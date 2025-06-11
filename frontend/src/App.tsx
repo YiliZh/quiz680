@@ -10,6 +10,7 @@ import ChapterDetail from './pages/ChapterDetail'
 import PdfViewer from './pages/PdfViewer'
 import ExamHistoryPage from './pages/ExamHistoryPage'
 import ExamSessionDetail from './pages/ExamSessionDetail'
+import ReviewRecommendationsPage from './pages/ReviewRecommendationsPage'
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/exam-history" element={<ExamHistoryPage />} />
           <Route path="/exam-history/:sessionId" element={<ExamSessionDetail />} />
+          <Route path="/review-recommendations" element={<ReviewRecommendationsPage />} />
           <Route path="/quiz/:chapterId" element={<QuizPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/uploads/:uploadId/chapters" element={<ChapterList />} />

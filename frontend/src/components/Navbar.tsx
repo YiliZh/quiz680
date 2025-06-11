@@ -32,6 +32,9 @@ function Navbar() {
               <Button color="inherit" component={RouterLink} to="/exam-history">
                 Exam History
               </Button>
+              <Button color="inherit" component={RouterLink} to="/review-recommendations">
+                Review Questions
+              </Button>
               <Button color="inherit" onClick={handleLogout}>
                 Logout
               </Button>

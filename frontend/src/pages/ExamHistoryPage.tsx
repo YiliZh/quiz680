@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container,
   Typography,
@@ -17,9 +17,13 @@ import {
   CircularProgress,
   Alert,
   TablePagination,
+  Dialog,
+  DialogTitle,
+  DialogContent,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import QuestionReviewCard from '../components/QuestionReviewCard';
 
 interface ExamSession {
   id: number;
@@ -34,7 +38,12 @@ interface ExamSession {
 
 interface ReviewRecommendation {
   id: number;
+  recommendation_id: number;
   question_text: string;
+  question_type: string;
+  options: string[];
+  correct_answer: string;
+  explanation?: string;
   chapter_title: string;
   book_title: string;
   last_reviewed_at: string | null;
@@ -52,6 +61,8 @@ function ExamHistoryPage() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
+  const [selectedRecommendation, setSelectedRecommendation] = useState<ReviewRecommendation | null>(null);
+  const [openDialog, setOpenDialog] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -118,6 +129,28 @@ function ExamHistoryPage() {
     }
   };
 
+  const handleReview = async (recommendation: ReviewRecommendation) => {
+    try {
+      const response = await api.get(`/exam-history/review-recommendations/${recommendation.id}/question`);
+      setSelectedRecommendation({ 
+        ...recommendation, 
+        ...response.data
+      });
+      setOpenDialog(true);
+    } catch (error) {
+      console.error('Error fetching question details:', error);
+      setError('Failed to load question details');
+    }
+  };
+
+  const handleComplete = () => {
+    if (selectedRecommendation) {
+      handleCompleteReview(selectedRecommendation.id);
+      setOpenDialog(false);
+      setSelectedRecommendation(null);
+    }
+  };
+
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
@@ -177,16 +210,9 @@ function ExamHistoryPage() {
                     <TableCell>{session.book_title}</TableCell>
                     <TableCell>{session.chapter_title}</TableCell>
                     <TableCell>{session.score}/{session.total_questions}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={`${session.performance_percentage.toFixed(1)}%`}
-                        color={session.performance_percentage >= 70 ? 'success' : 'warning'}
-                      />
-                    </TableCell>
+                    <TableCell>{session.performance_percentage.toFixed(1)}%</TableCell>
                     <TableCell>{formatDuration(session.duration)}</TableCell>
-                    <TableCell>
-                      {new Date(session.completed_at).toLocaleDateString()}
-                    </TableCell>
+                    <TableCell>{new Date(session.completed_at).toLocaleDateString()}</TableCell>
                     <TableCell>
                       <Button
                         variant="outlined"
@@ -249,6 +275,13 @@ function ExamHistoryPage() {
                         <Button
                           variant="contained"
                           size="small"
+                          onClick={() => handleReview(rec)}
+                        >
+                          Review
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          size="small"
                           onClick={() => handleCompleteReview(rec.id)}
                           disabled={rec.days_until_review > 0}
                         >
@@ -280,6 +313,23 @@ function ExamHistoryPage() {
           />
         </Paper>
       )}
+
+      <Dialog
+        open={openDialog}
+        onClose={() => setOpenDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Review Question</DialogTitle>
+        <DialogContent>
+          {selectedRecommendation && (
+            <QuestionReviewCard
+              question={selectedRecommendation}
+              onComplete={handleComplete}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Container>
   );
 }
